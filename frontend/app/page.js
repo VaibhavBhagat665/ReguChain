@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Shield, Zap, AlertCircle, CheckCircle } from 'lucide-react';
 import QueryBox from '../components/QueryBox';
+import WalletConnect from '../components/WalletConnect';
 import RiskGauge from '../components/RiskGauge';
 import LiveFeed from '../components/LiveFeed';
 import EvidenceExplorer from '../components/EvidenceExplorer';
@@ -14,6 +15,7 @@ export default function Home() {
   const [queryResult, setQueryResult] = useState(null);
   const [healthStatus, setHealthStatus] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [connectedAddress, setConnectedAddress] = useState('');
 
   useEffect(() => {
     // Check backend health on mount
@@ -40,11 +42,19 @@ export default function Home() {
     }
   };
 
+  const handleWalletConnect = (address) => {
+    setConnectedAddress(address);
+    if (address) {
+      // Automatically check the connected wallet
+      handleQuery(`Check compliance status for wallet ${address}`, address);
+    }
+  };
+
   const handleSimulate = async () => {
     setSimulating(true);
     setNotification(null);
     try {
-      const target = queryResult?.target || `0xDEMO${Date.now().toString().slice(-8)}`;
+      const target = connectedAddress || queryResult?.target || `0xDEMO${Date.now().toString().slice(-8)}`;
       const result = await simulateIngestion(target);
       setNotification({
         type: 'success',
@@ -118,6 +128,9 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Wallet Connection */}
+            <WalletConnect onAddressSelect={handleWalletConnect} />
+            
             {/* Query Box */}
             <QueryBox onQuery={handleQuery} loading={loading} />
 
