@@ -19,6 +19,7 @@ export default function Home() {
 
   useEffect(() => {
     // Check backend health on mount
+    console.log('ReguChain API URL:', process.env.NEXT_PUBLIC_API_URL);
     checkHealth().then(setHealthStatus);
   }, []);
 
