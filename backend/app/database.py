@@ -19,7 +19,7 @@ class Document(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     link = Column(String(500))
     embedding_id = Column(Integer, index=True)
-    metadata = Column(Text)  # JSON string for additional data
+    meta = Column("metadata", Text)  # JSON string for additional data
     
     def to_dict(self):
         return {
@@ -29,7 +29,7 @@ class Document(Base):
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "link": self.link,
             "embedding_id": self.embedding_id,
-            "metadata": json.loads(self.metadata) if self.metadata else {}
+            "metadata": json.loads(self.meta) if self.meta else {}
         }
 
 class Transaction(Base):
@@ -78,7 +78,7 @@ def save_document(source: str, text: str, link: str = "", metadata: Dict = None,
             text=text,
             link=link,
             embedding_id=embedding_id,
-            metadata=json.dumps(metadata or {})
+            meta=json.dumps(metadata or {})
         )
         db.add(doc)
         db.commit()
