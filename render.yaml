@@ -1,0 +1,72 @@
+services:
+  # Backend API Service
+  - type: web
+    name: reguchain-watch-api
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: NEWSAPI_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///app/data/reguchain.db
+      - key: FAISS_INDEX_PATH
+        value: /app/faiss_index/index
+      - key: EMBEDDINGS_PROVIDER
+        value: google
+      - key: EMBEDDINGS_MODEL
+        value: models/embedding-001
+      - key: EMBEDDINGS_DIMENSION
+        value: 768
+      - key: LLM_PROVIDER
+        value: google
+      - key: LLM_MODEL
+        value: gemini-pro
+      - key: LLM_TEMPERATURE
+        value: 0.3
+      - key: PATHWAY_MODE
+        value: streaming
+      - key: PATHWAY_STREAMING_MODE
+        value: realtime
+      - key: PATHWAY_PERSISTENCE_BACKEND
+        value: filesystem
+      - key: PATHWAY_PERSISTENCE_PATH
+        value: /app/pathway_data
+      - key: RISK_SCORE_THRESHOLD
+        value: 50
+      - key: TRANSACTION_THRESHOLD
+        value: 10000
+    healthCheckPath: /health
+    disk:
+      name: reguchain-data
+      mountPath: /app/data
+      sizeGB: 1
+
+  # Background Worker for Ingestion (Optional)
+  - type: worker
+    name: reguchain-watch-ingester
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: python -m app.ingest_worker
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: NEWSAPI_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///app/data/reguchain.db
+      - key: FAISS_INDEX_PATH
+        value: /app/faiss_index/index
+    disk:
+      name: reguchain-data
+      mountPath: /app/data
+      sizeGB: 1
+
+# Cron Jobs for periodic data refresh
+cronJobs:
+  - name: reguchain-data-refresh
+    schedule: "0 */6 * * *"  # Every 6 hours
+    command: curl -X POST https://reguchain-watch-api.onrender.com/api/ingest/refresh

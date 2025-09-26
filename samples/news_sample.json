@@ -1,0 +1,71 @@
+{
+  "status": "ok",
+  "totalResults": 5,
+  "articles": [
+    {
+      "source": {
+        "id": null,
+        "name": "CryptoNews"
+      },
+      "author": "John Smith",
+      "title": "Major DeFi Protocol Hacked for $10M in Latest Exploit",
+      "description": "A popular DeFi protocol suffered a $10 million hack due to a smart contract vulnerability. The attacker's wallet 0xDEMO0001 has been identified.",
+      "url": "https://example.com/defi-hack",
+      "urlToImage": "https://example.com/image.jpg",
+      "publishedAt": "2024-01-15T10:00:00Z",
+      "content": "The DeFi ecosystem faced another major setback as hackers exploited a vulnerability..."
+    },
+    {
+      "source": {
+        "id": null,
+        "name": "RegWatch"
+      },
+      "author": "Jane Doe",
+      "title": "OFAC Adds 5 New Crypto Addresses to Sanctions List",
+      "description": "The U.S. Treasury's OFAC has sanctioned five cryptocurrency addresses linked to ransomware operations.",
+      "url": "https://example.com/ofac-update",
+      "urlToImage": "https://example.com/ofac.jpg",
+      "publishedAt": "2024-01-14T15:30:00Z",
+      "content": "In a continued crackdown on cryptocurrency-related crime, OFAC has added..."
+    },
+    {
+      "source": {
+        "id": null,
+        "name": "FinanceDaily"
+      },
+      "author": "Mike Johnson",
+      "title": "SEC Files Charges Against Unregistered Crypto Exchange",
+      "description": "The Securities and Exchange Commission has filed charges against an unregistered cryptocurrency exchange for violations of securities laws.",
+      "url": "https://example.com/sec-charges",
+      "urlToImage": "https://example.com/sec.jpg",
+      "publishedAt": "2024-01-13T09:15:00Z",
+      "content": "The SEC continues its enforcement actions in the cryptocurrency space..."
+    },
+    {
+      "source": {
+        "id": null,
+        "name": "BlockchainToday"
+      },
+      "author": "Sarah Wilson",
+      "title": "Money Laundering Scheme Using Crypto Mixers Uncovered",
+      "description": "Law enforcement agencies have uncovered a sophisticated money laundering operation using cryptocurrency mixers and DeFi protocols.",
+      "url": "https://example.com/money-laundering",
+      "urlToImage": "https://example.com/ml.jpg",
+      "publishedAt": "2024-01-12T14:20:00Z",
+      "content": "A joint investigation by multiple agencies has revealed..."
+    },
+    {
+      "source": {
+        "id": null,
+        "name": "CryptoCompliance"
+      },
+      "author": "Robert Brown",
+      "title": "New AML Regulations for Cryptocurrency Exchanges Announced",
+      "description": "Regulatory authorities have announced stricter Anti-Money Laundering requirements for cryptocurrency exchanges operating in the jurisdiction.",
+      "url": "https://example.com/aml-regulations",
+      "urlToImage": "https://example.com/aml.jpg",
+      "publishedAt": "2024-01-11T11:45:00Z",
+      "content": "In response to growing concerns about cryptocurrency-related financial crimes..."
+    }
+  ]
+}

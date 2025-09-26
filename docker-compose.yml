@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - NEWSAPI_KEY=${NEWSAPI_KEY}
+      - DATABASE_URL=sqlite:///app/data/reguchain.db
+      - FAISS_INDEX_PATH=/app/faiss_index/index
+      - EMBEDDINGS_PROVIDER=google
+      - EMBEDDINGS_MODEL=models/embedding-001
+      - EMBEDDINGS_DIMENSION=768
+      - LLM_PROVIDER=google
+      - LLM_MODEL=gemini-pro
+      - LLM_TEMPERATURE=0.3
+      - RISK_SCORE_THRESHOLD=50
+      - TRANSACTION_THRESHOLD=10000
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/faiss_index:/app/faiss_index
+    networks:
+      - reguchain-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - reguchain-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+networks:
+  reguchain-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+  faiss-index:
