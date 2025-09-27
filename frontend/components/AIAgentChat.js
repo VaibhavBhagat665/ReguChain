@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Loader, MessageSquare, Brain, Shield, Activity } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-export default function AIAgentChat({ walletAddress, onAnalysisResult }) {
+export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQuestion }) {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,6 +30,17 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult }) {
       sendWelcomeMessage();
     }
   }, [walletAddress]);
+
+  useEffect(() => {
+    // If there's an initial question, send it automatically
+    if (initialQuestion && messages.length > 0) {
+      setInputMessage(initialQuestion);
+      // Auto-send after a short delay to let the welcome message appear
+      setTimeout(() => {
+        sendMessage(initialQuestion);
+      }, 1000);
+    }
+  }, [initialQuestion, messages.length]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,13 +103,14 @@ What would you like to explore first?`,
     }
   };
 
-  const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+  const sendMessage = async (messageToSend = null) => {
+    const messageContent = messageToSend || inputMessage;
+    if (!messageContent.trim() || isLoading) return;
 
     const userMessage = {
       id: uuidv4(),
       role: 'user',
-      content: inputMessage,
+      content: messageContent,
       timestamp: new Date().toISOString(),
       metadata: {}
     };
@@ -114,7 +126,7 @@ What would you like to explore first?`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: inputMessage,
+          message: messageContent,
           conversation_id: conversationId,
           wallet_address: walletAddress,
           context: {
