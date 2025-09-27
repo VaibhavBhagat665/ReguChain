@@ -1,77 +1,71 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Zap, AlertCircle, CheckCircle } from 'lucide-react';
-import QueryBox from '../components/QueryBox';
+import { Shield, Bot, AlertCircle, CheckCircle, Brain, Activity } from 'lucide-react';
+import AIAgentChat from '../components/AIAgentChat';
 import WalletConnect from '../components/WalletConnect';
 import RiskGauge from '../components/RiskGauge';
 import LiveFeed from '../components/LiveFeed';
 import EvidenceExplorer from '../components/EvidenceExplorer';
-import { queryAPI, simulateIngestion, checkHealth } from '../lib/api';
+import { queryAPI } from '../lib/api';
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
-  const [simulating, setSimulating] = useState(false);
-  const [queryResult, setQueryResult] = useState(null);
-  const [healthStatus, setHealthStatus] = useState(null);
+  const [analysisResult, setAnalysisResult] = useState(null);
   const [notification, setNotification] = useState(null);
   const [connectedAddress, setConnectedAddress] = useState('');
+  const [agentCapabilities, setAgentCapabilities] = useState([]);
+  const [systemStatus, setSystemStatus] = useState(null);
 
   useEffect(() => {
-    // Check backend health on mount
+    // Initialize system status and capabilities
     console.log('ReguChain API URL:', process.env.NEXT_PUBLIC_API_URL);
-    checkHealth().then(setHealthStatus);
+    fetchSystemStatus();
+    fetchAgentCapabilities();
   }, []);
 
-  const handleQuery = async (question, target) => {
-    setLoading(true);
-    setNotification(null);
+  const fetchSystemStatus = async () => {
     try {
-      const result = await queryAPI(question, target);
-      setQueryResult(result);
-      setNotification({
-        type: 'success',
-        message: 'Analysis completed successfully',
-      });
+      const response = await fetch('/api/status');
+      if (response.ok) {
+        const status = await response.json();
+        setSystemStatus(status);
+      }
     } catch (error) {
-      setNotification({
-        type: 'error',
-        message: 'Failed to analyze query. Please try again.',
-      });
-    } finally {
-      setLoading(false);
+      console.error('Error fetching system status:', error);
     }
   };
 
-  const handleWalletConnect = (address) => {
+  const fetchAgentCapabilities = async () => {
+    try {
+      const response = await fetch('/api/agent/capabilities');
+      if (response.ok) {
+        const capabilities = await response.json();
+        setAgentCapabilities(capabilities);
+      }
+    } catch (error) {
+      console.error('Error fetching agent capabilities:', error);
+    }
+  };
+
+  const handleAnalysisResult = (result) => {
+    setAnalysisResult(result);
+    setNotification({
+      type: 'success',
+      message: 'AI analysis completed successfully',
+    });
+  };
+
+  const handleWalletConnect = (address, options = {}) => {
     setConnectedAddress(address);
     if (address) {
-      // Automatically check the connected wallet
-      handleQuery(`Check compliance status for wallet ${address}`, address);
+      setNotification({
+        type: 'success',
+        message: `Wallet connected successfully. The AI agent is ready to help analyze ${address.substring(0, 6)}...${address.substring(address.length - 4)}`,
+      });
     }
   };
 
-  const handleSimulate = async () => {
-    setSimulating(true);
-    setNotification(null);
-    try {
-      const target = connectedAddress || queryResult?.target || `0xDEMO${Date.now().toString().slice(-8)}`;
-      const result = await simulateIngestion(target);
-      setNotification({
-        type: 'success',
-        message: `Simulated ingestion for ${result.target}. Re-run your query to see updated results!`,
-      });
-      // Clear previous results to encourage re-query
-      setQueryResult(null);
-    } catch (error) {
-      setNotification({
-        type: 'error',
-        message: 'Failed to simulate ingestion. Please try again.',
-      });
-    } finally {
-      setSimulating(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
@@ -83,20 +77,36 @@ export default function Home() {
               <Shield className="w-8 h-8 text-primary-600" />
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ReguChain Watch
+                  ReguChain AI Agent
                 </h1>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Real-time Regulatory Compliance with AI-powered RAG
+                  Advanced AI Agent for Blockchain Regulatory Compliance
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {healthStatus && (
+            <div className="flex items-center gap-3">
+              {systemStatus && (
                 <div className="flex items-center gap-2 px-3 py-1 bg-green-50 dark:bg-green-900/20 rounded-full">
-                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <Bot className="w-4 h-4 text-green-600 dark:text-green-400" />
                   <span className="text-sm text-green-700 dark:text-green-300">
-                    System Online
+                    AI Agent Online
                   </span>
+                </div>
+              )}
+              {agentCapabilities.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {agentCapabilities.slice(0, 3).map((capability, index) => (
+                    <div
+                      key={capability.name}
+                      className="p-1 bg-primary-50 dark:bg-primary-900/20 rounded"
+                      title={capability.description}
+                    >
+                      {capability.name === 'wallet_analysis' && <Shield className="w-3 h-3 text-primary-600" />}
+                      {capability.name === 'conversational_ai' && <Bot className="w-3 h-3 text-primary-600" />}
+                      {capability.name === 'blockchain_insights' && <Brain className="w-3 h-3 text-primary-600" />}
+                      {capability.name === 'risk_assessment' && <Activity className="w-3 h-3 text-primary-600" />}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -132,51 +142,56 @@ export default function Home() {
             {/* Wallet Connection */}
             <WalletConnect onAddressSelect={handleWalletConnect} />
             
-            {/* Query Box */}
-            <QueryBox onQuery={handleQuery} loading={loading} />
+            {/* AI Agent Chat Interface */}
+            <AIAgentChat 
+              walletAddress={connectedAddress}
+              onAnalysisResult={handleAnalysisResult}
+            />
 
-            {/* Simulate Button */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Zap className="w-5 h-5 text-yellow-500" />
-                Demo: Simulate New Sanction
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Inject a simulated sanction entry to see how the system updates in real-time.
-                This will add new OFAC and news entries for the target wallet.
-              </p>
-              <button
-                onClick={handleSimulate}
-                disabled={simulating}
-                className="w-full bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 text-white py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-              >
-                {simulating ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Simulating...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5" />
-                    Simulate Ingestion
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Results */}
-            {queryResult && (
+            {/* Analysis Results */}
+            {analysisResult && (
               <>
-                <RiskGauge
-                  score={queryResult.risk_score}
-                  reasons={queryResult.risk_reasons}
-                  recommendations={queryResult.recommendations}
-                />
-                <EvidenceExplorer
-                  evidence={queryResult.evidence}
-                  onchainMatches={queryResult.onchain_matches}
-                  answer={queryResult.answer}
-                />
+                {analysisResult.risk_assessment && (
+                  <RiskGauge
+                    score={analysisResult.risk_assessment.score}
+                    reasons={analysisResult.risk_assessment.factors || []}
+                    recommendations={analysisResult.suggested_actions || []}
+                  />
+                )}
+                {analysisResult.blockchain_data && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-primary-600" />
+                      Blockchain Analysis
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-primary-600">
+                          {analysisResult.blockchain_data.total_transactions || 0}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Transactions</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-primary-600">
+                          {analysisResult.blockchain_data.risk_score || 0}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Risk Score</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-primary-600">
+                          {analysisResult.blockchain_data.unique_counterparties || 0}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Counterparties</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-primary-600">
+                          {analysisResult.blockchain_data.transaction_volume?.toFixed(2) || '0.00'}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Volume (ETH)</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -191,9 +206,20 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-12 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-            © 2024 ReguChain Watch. AI-powered regulatory compliance monitoring.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              © 2024 ReguChain AI Agent. Advanced blockchain compliance monitoring.
+            </p>
+            <div className="flex items-center gap-4 text-xs text-gray-500">
+              {systemStatus && (
+                <>
+                  <span>Documents: {systemStatus.total_documents}</span>
+                  <span>Active Conversations: {systemStatus.active_conversations}</span>
+                  <span>Capabilities: {agentCapabilities.length}</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </footer>
     </div>
