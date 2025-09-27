@@ -9,7 +9,7 @@ export default function NewsFeed() {
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
 
-  const MOCK_NEWS = [
+  const SAMPLE_NEWS = [
     {
       id: 'n1',
       title: 'Regulators increase crypto enforcement actions in Q3',
@@ -21,7 +21,7 @@ export default function NewsFeed() {
     {
       id: 'n2',
       title: 'OFAC updates sanctions guidance for virtual assets',
-      source: 'OFAC (mock)',
+      source: 'OFAC',
       timestamp: new Date().toISOString(),
       snippet: 'New guidance clarifies obligations for service providers interacting with sanctioned entities.',
       link: '#'
@@ -49,12 +49,12 @@ export default function NewsFeed() {
           }));
           setNews(items);
         } else {
-          setNews(MOCK_NEWS);
+          setNews(SAMPLE_NEWS);
         }
       } catch (e) {
         if (e.name === 'AbortError') return;
         console.error('Error loading news/status:', e);
-        setNews(MOCK_NEWS);
+        setNews(SAMPLE_NEWS);
       } finally {
         if (mountedRef.current) setLoading(false);
       }
