@@ -1,10 +1,14 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Normalize NEXT_PUBLIC_API_URL to always be the backend root (no trailing slash)
+const raw = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const stripTrailingSlash = (u) => u.replace(/\/$/, '');
+// If env already includes "/api" at the end, treat that as base root
+const API_ROOT = stripTrailingSlash(raw.endsWith('/api') ? raw.slice(0, -4) : raw);
 
-// Create axios instance
+// Create axios instance pointed to backend root; endpoints will prefix with /api
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_ROOT,
   headers: {
     'Content-Type': 'application/json',
   },
