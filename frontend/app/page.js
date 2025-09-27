@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Shield, Zap, BarChart3, Brain, FileText, Search, Eye, Bot } from 'lucide-react';
 import WalletConnect from '../components/WalletConnect';
 import AIAgentChat from '../components/AIAgentChat';
+import NewsFeed from '../components/NewsFeed';
 
 export default function Home() {
   const [connectedAddress, setConnectedAddress] = useState('');
@@ -105,16 +106,22 @@ export default function Home() {
 
         {/* AI Chat Interface */}
         {(showChat || connectedAddress) && (
-          <div className="mt-8">
-            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg">
-                  <Bot className="w-5 h-5 text-white" />
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg">
+                    <Bot className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white">AI Compliance Assistant</h3>
+                  {selectedExample && <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 rounded-full text-sm">{selectedExample.category}</span>}
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">AI Compliance Assistant</h3>
-                {selectedExample && <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 rounded-full text-sm">{selectedExample.category}</span>}
+                <AIAgentChat walletAddress={connectedAddress} initialQuestion={selectedExample?.question} />
               </div>
-              <AIAgentChat walletAddress={connectedAddress} initialQuestion={selectedExample?.question} />
+            </div>
+
+            <div className="lg:col-span-1">
+              <NewsFeed />
             </div>
           </div>
         )}
