@@ -41,7 +41,7 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                  Your Compliance Dashboard ✨
+                  ReguChain
                 </h1>
                 <p className="text-lg text-gray-600 dark:text-gray-400 mt-1">AI-powered compliance guidance, recommendations, and blockchain insights</p>
               </div>
