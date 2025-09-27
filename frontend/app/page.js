@@ -50,7 +50,7 @@ export default function Home() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Welcome back, Compliance Expert!</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">2 interests tracked</p>
               </div>
-              <button className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Sign Out</button>
+              <button onClick={() => { setConnectedAddress(''); setShowChat(false); }} className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">Sign Out</button>
             </div>
           </div>
         </div>
