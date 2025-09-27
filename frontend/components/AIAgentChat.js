@@ -107,14 +107,15 @@ What would you like to explore first?`,
     setMessages(prev => [...prev, welcomeMessage]);
   };
 
-  const fetchCapabilities = async () => {
+  const fetchCapabilities = async (signal = undefined) => {
     try {
-      const response = await fetch('/api/agent/capabilities');
+      const response = await fetch('/api/agent/capabilities', { signal });
       if (response.ok) {
         const capabilities = await response.json();
-        setAgentCapabilities(capabilities);
+        if (mountedRef.current) setAgentCapabilities(capabilities);
       }
     } catch (error) {
+      if (error.name === 'AbortError') return; // expected on unmount
       console.error('Error fetching capabilities:', error);
     }
   };
