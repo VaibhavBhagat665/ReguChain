@@ -12,11 +12,27 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   const [agentCapabilities, setAgentCapabilities] = useState([]);
   const messagesEndRef = useRef(null);
 
+  const mountedRef = useRef(true);
+  const sendControllerRef = useRef(null);
+  const initialSentRef = useRef(false);
+
   useEffect(() => {
+    // Track mounted state to avoid setState after unmount
+    mountedRef.current = true;
+    const controller = new AbortController();
+
     // Initialize conversation
     initializeConversation();
-    // Fetch agent capabilities
-    fetchCapabilities();
+    // Fetch agent capabilities with abort signal
+    fetchCapabilities(controller.signal);
+
+    return () => {
+      mountedRef.current = false;
+      try { controller.abort(); } catch (e) {}
+      if (sendControllerRef.current) {
+        try { sendControllerRef.current.abort(); } catch (e) {}
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -32,13 +48,13 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   }, [walletAddress]);
 
   useEffect(() => {
-    // If there's an initial question, send it automatically
-    if (initialQuestion && messages.length > 0) {
+    // If there's an initial question, send it only once after welcome message
+    if (!initialSentRef.current && initialQuestion && messages.length > 0) {
+      initialSentRef.current = true;
       setInputMessage(initialQuestion);
-      // Auto-send after a short delay to let the welcome message appear
       setTimeout(() => {
         sendMessage(initialQuestion);
-      }, 1000);
+      }, 500);
     }
   }, [initialQuestion, messages.length]);
 
