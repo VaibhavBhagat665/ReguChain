@@ -3,13 +3,14 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - NEWSAPI_KEY=${NEWSAPI_KEY}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
       - DATABASE_URL=sqlite:///app/data/reguchain.db
       - FAISS_INDEX_PATH=/app/faiss_index/index
       - EMBEDDINGS_PROVIDER=google

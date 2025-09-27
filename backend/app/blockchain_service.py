@@ -4,6 +4,7 @@ Provides real-time blockchain data for wallet analysis
 """
 import asyncio
 import logging
+import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import aiohttp
@@ -41,9 +42,9 @@ class BlockchainDataService:
     """Service for fetching real blockchain data"""
     
     def __init__(self):
-        self.etherscan_api_key = None  # Will be set from environment
-        self.alchemy_api_key = None    # Will be set from environment
-        self.moralis_api_key = None    # Will be set from environment
+        self.etherscan_api_key = os.getenv("ETHERSCAN_API_KEY")
+        self.alchemy_api_key = os.getenv("ALCHEMY_API_KEY")
+        self.moralis_api_key = os.getenv("MORALIS_API_KEY")
         
         # Free API endpoints (no key required)
         self.free_endpoints = {
@@ -109,6 +110,10 @@ class BlockchainDataService:
                 "tag": "latest"
             }
             
+            # Add API key if available
+            if self.etherscan_api_key:
+                params["apikey"] = self.etherscan_api_key
+            
             await self._rate_limit("etherscan")
             
             async with aiohttp.ClientSession() as session:
@@ -149,6 +154,10 @@ class BlockchainDataService:
                 "tag": "latest"
             }
             
+            # Add API key if available
+            if self.etherscan_api_key:
+                params["apikey"] = self.etherscan_api_key
+            
             await self._rate_limit("etherscan")
             
             async with aiohttp.ClientSession() as session:
@@ -179,6 +188,10 @@ class BlockchainDataService:
                 "offset": min(limit, 10),  # Free tier limit
                 "sort": "desc"
             }
+            
+            # Add API key if available
+            if self.etherscan_api_key:
+                params["apikey"] = self.etherscan_api_key
             
             await self._rate_limit("etherscan")
             
