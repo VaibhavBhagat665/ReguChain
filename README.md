@@ -1,4 +1,4 @@
-# 🔗 ReguChain Watch
+# 🔗 ReguChain
 
 > **AI-Powered Regulatory Compliance Intelligence Platform**
 
@@ -26,11 +26,13 @@ graph TB
     B --> D[⚠️ Risk Engine]
     B --> E[🗂️ Vector Store]
     B --> F[📥 Data Ingestion]
+    B --> G[⚡ Pathway Streaming]
     
-    C --> G[🧠 Google Gemini]
-    E --> H[🔍 FAISS Index]
-    F --> I[📡 OFAC/SEC/CFTC APIs]
-    F --> J[📰 News Sources]
+    C --> H[🧠 Google Gemini]
+    E --> I[🔍 FAISS Index]
+    F --> J[📡 OFAC/SEC/CFTC APIs]
+    F --> K[📰 News Sources]
+    G --> L[🔄 Real-time Processing]
 ```
 
 ---
@@ -51,6 +53,7 @@ graph TB
 - Docker containerization
 - Health monitoring & error handling
 - Scalable cloud deployment
+- **Pathway streaming** - Enterprise real-time data processing (optional)
 
 ---
 
@@ -60,6 +63,7 @@ graph TB
 - **FastAPI** - High-performance API framework
 - **Google Gemini** - Advanced AI embeddings & generation
 - **FAISS** - Vector similarity search
+- **Pathway** - Real-time data streaming engine (enterprise license)
 - **SQLAlchemy** - Database ORM
 - **SQLite** - Lightweight data storage
 
@@ -102,6 +106,7 @@ Experience the platform's capabilities:
 |----------|---------|----------|
 | `GOOGLE_API_KEY` | Gemini AI access | ✅ Yes |
 | `NEWSAPI_KEY` | News data source | ❌ Optional |
+| `PATHWAY_KEY` | Real-time streaming license | ❌ Optional |
 | `DATABASE_URL` | Data storage path | ✅ Yes |
 | `FAISS_INDEX_PATH` | Vector index location | ✅ Yes |
 
