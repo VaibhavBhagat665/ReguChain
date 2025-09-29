@@ -27,12 +27,46 @@ coverage/
 .env
 .env.local
 .env.*.local
+config.ini
+.env.production
+.env.development
+
+# --- API Keys & Sensitive Data ---
+# Protect all configuration files with API keys
+**/config.ini
+**/.env*
+**/secrets.json
+**/credentials.json
+**/api_keys.txt
+**/keys.txt
+
+# --- ReguChain Specific ---
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+reguchain.db
+
+# Pathway data and state
+pathway_data/
+pathway_state/
+streams/
+
+# Vector store indexes
+faiss_index*
+*.index
+*.metadata
+
+# Logs and temporary files
+logs/
+temp/
+tmp/
+*.log.*
 
 # --- IDE / Editor settings ---
-.vscode/
+vscode/
 .idea/
 *.iml
-
 # --- Python ---
 __pycache__/
 *.py[cod]

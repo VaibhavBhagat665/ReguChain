@@ -18,6 +18,7 @@ from .vector_store import vector_store
 from .risk import risk_engine
 from .ingest import ingester
 from .ai_agent import ai_agent
+from .realtime_api import realtime_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +67,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include real-time router
+app.include_router(realtime_router)
 
 
 

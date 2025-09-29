@@ -1,4 +1,4 @@
-plsfastapi==0.104.1
+fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
 sqlalchemy==2.0.23
@@ -6,7 +6,7 @@ aiohttp==3.9.1
 requests==2.31.0
 numpy==1.24.3
 faiss-cpu==1.7.4
-google-generativeai==0.3.0
+google-generativeai==0.8.0
 python-dotenv==1.0.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
@@ -29,6 +29,13 @@ beautifulsoup4==4.12.2
 lxml==4.9.3
 feedparser==6.0.10
 newsapi-python==0.2.7
-pathway==0.8.0
+
+# Pathway for real-time streaming
+pathway==0.13.0
+
+# Additional dependencies for real-time processing
 tiktoken==0.5.2
 openai==1.6.1
+schedule==1.2.0
+asyncio-mqtt==0.16.1
+websockets==12.0
