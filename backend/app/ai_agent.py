@@ -14,7 +14,7 @@ from .models import (
     ConversationHistory, AgentCapability, WalletAnalysisRequest,
     WalletAnalysisResponse, TransactionData
 )
-from .config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
+from .config import GROQ_API_KEY, LLM_MODEL, LLM_TEMPERATURE, LLM_PROVIDER
 from .database import get_recent_documents, get_transactions_for_address
 from .vector_store import vector_store
 from .risk import risk_engine
@@ -25,14 +25,7 @@ from .langchain_agent import langchain_agent
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Try to import Gemini for LLM generation
-genai = None
-try:
-    import google.generativeai as genai
-    genai.configure(api_key=GOOGLE_API_KEY)
-    logger.info("Gemini API configured for AI Agent")
-except ImportError:
-    logger.warning("Google GenAI SDK not available for AI Agent")
+# LLM is handled via LangChain agent (Groq).
 
 @dataclass
 class ConversationContext:
@@ -282,28 +275,11 @@ class ReguChainAIAgent:
                 "factors": analysis_result.get("risk_factors", [])
             }
         
-        # If no response generated yet, use Gemini or fallback
+        # If no response generated yet, perform compliance check and generate deterministic response
         if not response_data["message"]:
-            # Always perform compliance check to get real news data
             compliance_data = await self._perform_compliance_check(message, wallet_address)
             response_data["compliance_data"] = compliance_data
-            
-            # Generate AI response using Gemini
-            if genai and GOOGLE_API_KEY:
-                try:
-                    ai_response = await self._generate_gemini_response(
-                        message, wallet_address, conversation_history, 
-                        response_data.get("blockchain_data"), compliance_data, intent
-                    )
-                    response_data["message"] = ai_response["message"]
-                    response_data["confidence"] = ai_response.get("confidence", 0.8)
-                    response_data["suggested_actions"] = ai_response.get("suggested_actions", [])
-                    response_data["follow_up_questions"] = ai_response.get("follow_up_questions", [])
-                except Exception as e:
-                    logger.error(f"Error generating Gemini response: {e}")
-                    response_data["message"] = self._generate_fallback_response(message, intent, response_data)
-            else:
-                response_data["message"] = self._generate_fallback_response(message, intent, response_data)
+            response_data["message"] = self._generate_fallback_response(message, intent, response_data)
         
         return response_data
     
@@ -364,13 +340,11 @@ class ReguChainAIAgent:
             
         except Exception as e:
             logger.error(f"Error in wallet analysis: {e}")
-            # Fallback to mock data
+            # Do not return mock data; indicate error to caller
             return {
                 "address": wallet_address,
-                "risk_score": 25,
-                "total_transactions": 42,
-                "error": "Using fallback data - blockchain service temporarily unavailable",
-                "data_source": "fallback"
+                "error": "Blockchain service unavailable",
+                "data_source": "error"
             }
     
     async def _perform_compliance_check(self, query: str, wallet_address: Optional[str] = None) -> Dict[str, Any]:
@@ -436,112 +410,7 @@ class ReguChainAIAgent:
             logger.error(f"Error fetching real news: {e}")
             return {"error": "News service temporarily unavailable", "data_source": "error"}
     
-    async def _generate_gemini_response(
-        self, 
-        message: str, 
-        wallet_address: Optional[str],
-        conversation_history: str,
-        blockchain_data: Optional[Dict],
-        compliance_data: Optional[Dict],
-        intent: str
-    ) -> Dict[str, Any]:
-        """Generate response using Google Gemini"""
-        
-        # Build comprehensive prompt with real news data
-        news_context = ""
-        if compliance_data and compliance_data.get("recent_news"):
-            news_data = compliance_data["recent_news"]
-            if news_data.get("data_source") == "real_news_api":
-                news_context = f"""
-REAL-TIME NEWS CONTEXT:
-- Recent articles found: {news_data.get('total_articles', 0)}
-- Latest headlines: {', '.join(news_data.get('recent_headlines', []))}
-- News sources: {', '.join(news_data.get('sources', []))}
-- Categories: {', '.join(news_data.get('categories', []))}
-- Average relevance: {news_data.get('avg_relevance', 0):.2f}
-- Sentiment: {news_data.get('sentiment_distribution', {})}
-- Latest update: {news_data.get('latest_update', 'Unknown')}
-"""
-
-        prompt = f"""
-You are ReguChain AI, an advanced AI agent specializing in blockchain regulatory compliance and risk analysis. 
-You have access to REAL-TIME regulatory data, blockchain analytics, compliance databases, and live news feeds.
-
-CONVERSATION CONTEXT:
-{conversation_history}
-
-CURRENT USER MESSAGE: {message}
-
-WALLET ADDRESS: {wallet_address or "Not provided"}
-
-BLOCKCHAIN ANALYSIS DATA:
-{json.dumps(blockchain_data, indent=2) if blockchain_data else "No blockchain data available"}
-
-COMPLIANCE DATA:
-{json.dumps(compliance_data, indent=2) if compliance_data else "No compliance data available"}
-
-{news_context}
-
-INTENT: {intent}
-
-INSTRUCTIONS:
-1. Provide a helpful, accurate, and conversational response using REAL data
-2. Reference the actual news headlines and regulatory updates when relevant
-3. Use the blockchain and compliance data to support your analysis
-4. Be specific about risk factors and recommendations based on current events
-5. Maintain conversation context and refer to previous messages when relevant
-6. Suggest 2-3 actionable next steps based on real regulatory developments
-7. Ask 1-2 relevant follow-up questions to continue the conversation
-8. Express appropriate confidence level in your analysis
-9. Use a professional but approachable tone
-10. When mentioning news, reference actual headlines and sources provided
-
-RESPONSE FORMAT:
-Provide a natural conversational response that incorporates the real-time data available.
-Focus on being helpful and informative while maintaining accuracy.
-Always indicate when you're using real-time data vs. historical information.
-"""
-        
-        try:
-            model = genai.GenerativeModel(LLM_MODEL)
-            response = model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": LLM_TEMPERATURE,
-                    "max_output_tokens": 800,
-                }
-            )
-            
-            ai_message = response.text
-            
-            # Extract suggested actions and follow-up questions (simple parsing)
-            suggested_actions = []
-            follow_up_questions = []
-            
-            if "next steps:" in ai_message.lower() or "recommendations:" in ai_message.lower():
-                # Simple extraction logic - in production, use more sophisticated parsing
-                lines = ai_message.split('\n')
-                for line in lines:
-                    if line.strip().startswith(('1.', '2.', '3.', '-', '•')):
-                        suggested_actions.append(line.strip())
-            
-            if "?" in ai_message:
-                # Extract questions from response
-                sentences = ai_message.split('.')
-                for sentence in sentences:
-                    if '?' in sentence:
-                        follow_up_questions.append(sentence.strip())
-            
-            return {
-                "message": ai_message,
-                "confidence": 0.85,
-                "suggested_actions": suggested_actions[:3],
-                "follow_up_questions": follow_up_questions[:2]
-            }
-            
-        except Exception as e:
-            logger.error(f"Error generating Gemini response: {e}")
-            raise e
+    # Responses are produced by LangChain agent and deterministic builders.
     
     def _generate_fallback_response(self, message: str, intent: str, response_data: Dict) -> str:
         """Generate fallback response when AI is unavailable"""

@@ -23,7 +23,6 @@ class StreamStatus(BaseModel):
     timestamp: str
     pathway_available: bool
     news_api_available: bool
-    gemini_available: bool
     active_streams: List[str]
 
 class NewsQuery(BaseModel):
@@ -55,7 +54,6 @@ async def get_stream_status():
             timestamp=dashboard.get('timestamp', datetime.now().isoformat()),
             pathway_available=dashboard.get('pathway_available', False),
             news_api_available=bool(realtime_news_service.api_key),
-            gemini_available=bool(realtime_news_service.gemini_model),
             active_streams=dashboard.get('streams', {}).get('active_streams', [])
         )
     except Exception as e:
@@ -116,6 +114,10 @@ async def get_realtime_dashboard():
                 "recent_categories": stats.get('processed_news', {}).get('categories', {}),
                 "sentiment_distribution": stats.get('processed_news', {}).get('sentiment_distribution', {}),
                 "avg_relevance_score": stats.get('processed_news', {}).get('avg_relevance_score', 0.0),
+                # Wallet metrics via Pathway
+                "wallet_transactions_count": stats.get('wallet_transactions', {}).get('count', 0),
+                "wallet_high_risk_tx_count": stats.get('wallet_transactions', {}).get('high_risk', 0),
+                "wallet_alerts_count": stats.get('wallet_alerts', {}).get('count', 0),
                 "streams": dashboard.get('streams', {}),
                 "recent_alerts": stats.get('critical_alerts', {}).get('recent_count', 0),
                 "recent_high_priority": stats.get('high_priority_news', {}).get('recent_count', 0)
@@ -188,11 +190,20 @@ async def get_top_headlines(
 @realtime_router.get("/streams/{stream_name}")
 async def query_stream(
     stream_name: str,
-    limit: int = Query(10, description="Number of records to return")
+    limit: int = Query(10, description="Number of records to return"),
+    wallet_address: Optional[str] = Query(None, description="Filter by wallet address for wallet streams")
 ):
     """Query a specific data stream"""
     try:
-        valid_streams = ['processed_news', 'high_priority_news', 'critical_alerts', 'realtime_news']
+        valid_streams = [
+            'processed_news',
+            'high_priority_news',
+            'critical_alerts',
+            'realtime_news',
+            'wallet_transactions',
+            'wallet_transactions_processed',
+            'wallet_alerts'
+        ]
         
         if stream_name not in valid_streams:
             raise HTTPException(
@@ -200,7 +211,7 @@ async def query_stream(
                 detail=f"Invalid stream name. Valid streams: {valid_streams}"
             )
         
-        records = await realtime_pathway_service.query_stream(stream_name, limit)
+        records = await realtime_pathway_service.query_stream(stream_name, limit, wallet_address)
         
         return {
             "stream_name": stream_name,
@@ -257,8 +268,9 @@ async def health_check():
             "news_service": realtime_news_service is not None,
             "pathway_available": realtime_pathway_service.pathway_key is not None,
             "news_api_available": realtime_news_service.api_key is not None,
-            "gemini_available": realtime_news_service.gemini_model is not None,
-            "pipeline_running": realtime_pathway_service.is_running
+            "groq_available": getattr(realtime_news_service, 'groq_client', None) is not None,
+            "pipeline_running": realtime_pathway_service.is_running,
+            "connected_wallets": len(getattr(realtime_pathway_service, 'connected_wallets', set()))
         }
         
         # Overall health status
@@ -283,24 +295,7 @@ async def health_check():
             "message": "Health check failed"
         }
 
-@realtime_router.post("/test/pipeline")
-async def test_pipeline():
-    """Test the real-time pipeline with sample data"""
-    try:
-        # Generate test data
-        async with realtime_news_service:
-            test_articles = await realtime_news_service._generate_mock_news()
-        
-        return {
-            "message": "Pipeline test completed successfully",
-            "test_articles_generated": len(test_articles),
-            "sample_articles": [article.to_dict() for article in test_articles[:3]],
-            "timestamp": datetime.now().isoformat(),
-            "status": "success"
-        }
-    except Exception as e:
-        logger.error(f"Error testing pipeline: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Removed mock pipeline test endpoint to enforce real data only
 
 # Wallet Tracking Endpoints
 @realtime_router.post("/wallet/track")

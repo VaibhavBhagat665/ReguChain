@@ -1,30 +1,26 @@
-"""Embeddings module using Google Gemini"""
+"""Embeddings module using HuggingFace SentenceTransformer with deterministic fallback"""
 import os
 import hashlib
 import logging
 from typing import List
 import numpy as np
-from .config import GOOGLE_API_KEY, EMBEDDINGS_MODEL, EMBEDDINGS_DIMENSION
+from .config import EMBEDDINGS_MODEL, EMBEDDINGS_DIMENSION
 
 logger = logging.getLogger(__name__)
 
-# Try to import Google GenAI SDK with multiple patterns
-genai = None
+# Try to import HuggingFace SentenceTransformer
+_hf_model = None
 try:
-    # Pattern 1: google.generativeai
-    import google.generativeai as genai
-    genai.configure(api_key=GOOGLE_API_KEY)
-    logger.info("Successfully imported google.generativeai")
+    from sentence_transformers import SentenceTransformer
+    def _load_hf_model():
+        global _hf_model
+        if _hf_model is None:
+            model_name = EMBEDDINGS_MODEL or "sentence-transformers/all-MiniLM-L6-v2"
+            _hf_model = SentenceTransformer(model_name)
+        return _hf_model
 except ImportError:
-    try:
-        # Pattern 2: google.ai.generativelanguage
-        from google import genai as google_genai
-        genai = google_genai
-        if hasattr(genai, 'Client'):
-            genai = genai.Client(api_key=GOOGLE_API_KEY)
-        logger.info("Successfully imported google genai Client")
-    except ImportError:
-        logger.warning("Google GenAI SDK not available, using fallback embeddings")
+    SentenceTransformer = None
+    logger.warning("sentence-transformers not available, using fallback embeddings")
 
 def hash_based_embedding(text: str, dimension: int = EMBEDDINGS_DIMENSION) -> List[float]:
     """Deterministic fallback embedding using hash"""
@@ -47,39 +43,26 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
     
-    # Try to use Gemini API if available
-    if genai and GOOGLE_API_KEY:
-        try:
-            embeddings = []
-            for text in texts:
-                # Try different API patterns
-                try:
-                    # Pattern 1: embed_content method
-                    result = genai.embed_content(
-                        model=EMBEDDINGS_MODEL,
-                        content=text,
-                        task_type="retrieval_document"
-                    )
-                    if hasattr(result, 'embedding'):
-                        embeddings.append(result.embedding)
-                    else:
-                        embeddings.append(result['embedding'])
-                except Exception as e1:
-                    try:
-                        # Pattern 2: get_embeddings method
-                        model = genai.GenerativeModel(EMBEDDINGS_MODEL)
-                        result = model.embed_content(text)
-                        embeddings.append(result.embedding)
-                    except Exception as e2:
-                        # Fallback for this text
-                        logger.warning(f"Failed to get embedding for text, using fallback: {str(e2)}")
-                        embeddings.append(hash_based_embedding(text))
-            
-            if embeddings:
-                logger.info(f"Generated {len(embeddings)} embeddings using Gemini")
-                return embeddings
-        except Exception as e:
-            logger.error(f"Error getting Gemini embeddings: {e}")
+    # Try to use HuggingFace embeddings if available
+    try:
+        if SentenceTransformer is not None:
+            model = _load_hf_model()
+            vecs = model.encode(texts, normalize_embeddings=True, convert_to_numpy=True)
+            embeddings = vecs.tolist()
+            # Ensure expected dimension
+            dim = EMBEDDINGS_DIMENSION or (len(embeddings[0]) if embeddings else 0)
+            fixed = []
+            for v in embeddings:
+                if len(v) > dim:
+                    fixed.append(v[:dim])
+                elif len(v) < dim:
+                    fixed.append(v + [0.0] * (dim - len(v)))
+                else:
+                    fixed.append(v)
+            logger.info(f"Generated {len(fixed)} embeddings using HuggingFace")
+            return fixed
+    except Exception as e:
+        logger.error(f"Error getting HuggingFace embeddings: {e}")
     
     # Fallback to hash-based embeddings
     logger.info(f"Using fallback hash-based embeddings for {len(texts)} texts")

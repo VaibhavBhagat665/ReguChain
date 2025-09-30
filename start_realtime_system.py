@@ -24,7 +24,7 @@ async def main():
     # Check environment
     print("📋 Environment Check:")
     api_keys = {
-        'GOOGLE_API_KEY': os.getenv('GOOGLE_API_KEY'),
+        'GROQ_API_KEY': os.getenv('GROQ_API_KEY'),
         'NEWSAPI_KEY': os.getenv('NEWSAPI_KEY'),
         'PATHWAY_KEY': os.getenv('PATHWAY_KEY')
     }
@@ -41,7 +41,7 @@ async def main():
     if not any(api_keys.values()):
         print("\n⚠️  No API keys configured!")
         print("Create a .env file with your API keys:")
-        print("GOOGLE_API_KEY=your_gemini_key")
+        print("GROQ_API_KEY=your_groq_key")
         print("NEWSAPI_KEY=your_news_api_key")
         print("PATHWAY_KEY=your_pathway_key")
         return
@@ -53,12 +53,12 @@ async def main():
         
         print("\n🔄 Starting real-time pipeline...")
         
-        # Start Pathway pipeline in background
-        if realtime_pathway_service.pathway_key:
-            asyncio.create_task(realtime_pathway_service.start_realtime_pipeline())
-            print("✅ Pathway pipeline starting...")
-        else:
-            print("⚠️  Pathway running in simulation mode")
+        # Start Pathway pipeline in background (Pathway is mandatory)
+        if not realtime_pathway_service.pathway_key:
+            print("❌ PATHWAY_KEY missing. Pathway is required for real-time processing.")
+            return
+        asyncio.create_task(realtime_pathway_service.start_realtime_pipeline())
+        print("✅ Pathway pipeline starting...")
         
         print("\n🌐 Starting web server...")
         print("📚 API Documentation: http://localhost:8000/docs")

@@ -1,6 +1,6 @@
 """
 Demo script for ReguChain Real-time System
-Demonstrates Pathway streaming with News API and Gemini AI
+Demonstrates Pathway streaming with News APIs and Groq-powered analysis
 """
 import asyncio
 import json
@@ -18,8 +18,7 @@ async def demo_realtime_system():
     print("🎬 ReguChain Real-time System Demo")
     print("=" * 60)
     print("This demo showcases:")
-    print("• Real-time news fetching from News API")
-    print("• AI-powered analysis with Gemini")
+    print("• Real-time news fetching from News API/NewsData.io")
     print("• Pathway streaming and processing")
     print("• Real-time compliance monitoring")
     print("=" * 60)
@@ -76,80 +75,17 @@ async def demo_realtime_system():
         print(f"Pathway Available: {dashboard.get('pathway_available', False)}")
         print(f"Active Streams: {dashboard.get('streams', {}).get('total_streams', 0)}")
         
-        if dashboard.get('statistics'):
+        if 'statistics' in dashboard:
             stats = dashboard['statistics']
             print(f"Processed Articles: {stats.get('processed_news', {}).get('total_count', 0)}")
             print(f"High Priority: {stats.get('high_priority_news', {}).get('count', 0)}")
             print(f"Critical Alerts: {stats.get('critical_alerts', {}).get('count', 0)}")
         
-        # Demo 4: AI Analysis with Gemini
-        print("\n\n🤖 Demo 4: AI-Powered Analysis")
-        print("-" * 40)
-        
-        if realtime_news_service.gemini_model:
-            print("✅ Gemini AI is available for analysis")
-            
-            # Analyze a sample article
-            sample_text = """
-            The SEC has announced new enforcement guidelines for cryptocurrency exchanges, 
-            requiring enhanced AML compliance and customer verification procedures. 
-            This regulatory update affects all digital asset trading platforms operating in the US.
-            """
-            
-            analysis = await realtime_news_service._analyze_with_gemini(
-                "SEC Announces New Crypto Exchange Guidelines",
-                sample_text,
-                sample_text
-            )
-            
-            print("\n🔍 Sample Analysis Results:")
-            print(f"   Category: {analysis.get('category', 'N/A')}")
-            print(f"   Regulatory Impact: {analysis.get('regulatory_impact', 'N/A')}")
-            print(f"   Urgency: {analysis.get('urgency', 'N/A')}")
-            print(f"   Affected Sectors: {', '.join(analysis.get('affected_sectors', []))}")
-            print(f"   Compliance Areas: {', '.join(analysis.get('compliance_areas', []))}")
-        else:
-            print("⚠️  Gemini AI not configured - using basic analysis")
-        
-        # Demo 5: Stream Simulation
-        print("\n\n📊 Demo 5: Stream Processing Simulation")
-        print("-" * 40)
-        
-        print("Simulating real-time data processing...")
-        
-        # Create sample stream data
-        sample_data = []
-        for i in range(5):
-            sample_data.append({
-                'id': f'demo_{int(time.time())}_{i}',
-                'timestamp': datetime.now().isoformat(),
-                'title': f'Sample Regulatory Update {i+1}',
-                'category': ['regulatory', 'compliance', 'enforcement'][i % 3],
-                'relevance_score': 0.7 + (i * 0.05),
-                'sentiment': ['neutral', 'negative', 'positive'][i % 3]
-            })
-        
-        print(f"✅ Generated {len(sample_data)} sample records")
-        
-        # Process with priority scoring
-        for record in sample_data:
-            priority = realtime_pathway_service._calculate_priority_score(
-                record['relevance_score'],
-                'medium',
-                record['category']
-            )
-            alert_level = realtime_pathway_service._determine_alert_level(
-                'medium',
-                record['relevance_score']
-            )
-            
-            print(f"   📝 {record['title']}")
-            print(f"      Priority: {priority:.2f} | Alert: {alert_level}")
+        # End of demo items (removed AI-specific and simulation demos)
         
         # Demo 6: API Endpoints Preview
         print("\n\n🌐 Demo 6: Available API Endpoints")
         print("-" * 40)
-        
         endpoints = [
             "GET /api/realtime/status - System status",
             "POST /api/realtime/start - Start real-time processing",
@@ -160,7 +96,6 @@ async def demo_realtime_system():
             "GET /api/realtime/alerts/critical - Get critical alerts",
             "GET /api/realtime/health - Health check"
         ]
-        
         for endpoint in endpoints:
             print(f"   🔗 {endpoint}")
         
@@ -226,15 +161,15 @@ def create_sample_env():
     env_content = """# ReguChain Real-time Configuration
 # Get your API keys from the respective services
 
-# Gemini API Key (Required)
-# Get from: https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=your_gemini_api_key_here
+# Groq API Key (Required)
+# Get from: https://console.groq.com/keys
+GROQ_API_KEY=your_groq_api_key_here
 
-# News API Key (Required) 
-# Get from: https://newsapi.org/register
+# News API Key (Required)
+# For NewsAPI.org or NewsData.io API keys
 NEWSAPI_KEY=your_news_api_key_here
 
-# Pathway License Key (Optional - for advanced features)
+# Pathway License Key (Required for real-time streaming)
 # Get from: https://pathway.com/developers
 PATHWAY_KEY=your_pathway_license_key_here
 
@@ -242,7 +177,6 @@ PATHWAY_KEY=your_pathway_license_key_here
 DATABASE_URL=sqlite:///./reguchain.db
 
 # Pathway Settings
-PATHWAY_MODE=streaming
 PATHWAY_STREAMING_MODE=realtime
 PATHWAY_PERSISTENCE_BACKEND=filesystem
 PATHWAY_PERSISTENCE_PATH=./pathway_data
@@ -251,13 +185,13 @@ PATHWAY_MONITORING_LEVEL=info
 # Vector Store Settings
 VECTOR_DB_TYPE=faiss
 FAISS_INDEX_PATH=./faiss_index
-EMBEDDINGS_PROVIDER=google
-EMBEDDINGS_MODEL=models/embedding-001
-EMBEDDINGS_DIMENSION=768
+EMBEDDINGS_PROVIDER=huggingface
+EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDINGS_DIMENSION=384
 
 # LLM Settings
-LLM_PROVIDER=google
-LLM_MODEL=gemini-1.5-flash
+LLM_PROVIDER=groq
+LLM_MODEL=llama-3.1-8b-instant
 LLM_TEMPERATURE=0.3
 
 # Risk Assessment

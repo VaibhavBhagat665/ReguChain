@@ -28,7 +28,7 @@ graph TB
     B --> F[📥 Data Ingestion]
     B --> G[⚡ Pathway Streaming]
     
-    C --> H[🧠 Google Gemini]
+    C --> H[🧠 Groq LLM]
     E --> I[🔍 FAISS Index]
     F --> J[📡 OFAC/SEC/CFTC APIs]
     F --> K[📰 News Sources]
@@ -61,9 +61,9 @@ graph TB
 
 ### **Backend Engine**
 - **FastAPI** - High-performance API framework
-- **Google Gemini** - Advanced AI embeddings & generation
+- **Groq** - LLM for reasoning and analysis
 - **FAISS** - Vector similarity search
-- **Pathway** - Real-time data streaming engine (enterprise license)
+- **Pathway** - Real-time data streaming engine (wallet-centric streaming, requires license)
 - **SQLAlchemy** - Database ORM
 - **SQLite** - Lightweight data storage
 
@@ -83,20 +83,30 @@ graph TB
 
 Experience the platform's capabilities:
 
-1. **🔍 Query**: Ask about wallet compliance status
-2. **⚡ Simulate**: Inject test sanctions data
-3. **📊 Analyze**: Watch real-time risk score updates
-4. **🔍 Explore**: Review evidence and recommendations
+1. **🔗 Connect Wallet**: Connect your wallet to enable wallet-centric real-time monitoring
+2. **⚡ Start Realtime**: Start the Pathway streaming pipeline (auto-starts if `PATHWAY_KEY` is set)
+3. **🛰️ Stream**: Live wallet transactions and alerts stream into the dashboard
+4. **🤖 Query**: Ask the AI about your wallet or recent regulations
+5. **📊 Analyze**: Watch risk score updates and alerts in real time
 
 ---
 
 ## 🌐 **API Endpoints**
 
-| Endpoint | Purpose | Example |
-|----------|---------|---------|
-| `POST /api/query` | Compliance assessment | Risk analysis for addresses |
-| `POST /api/ingest/simulate` | Demo data injection | Test sanctions scenarios |
-| `GET /api/status` | System health | Platform status check |
+| Endpoint | Purpose | Notes |
+|----------|---------|-------|
+| `POST /api/agent/chat` | Conversational compliance assessment | Uses Groq LLM |
+| `POST /api/ingest/refresh` | Refresh data ingestion | Pull latest news/regulatory feeds |
+| `POST /api/realtime/start` | Start real-time processing | Begins Pathway streaming |
+| `POST /api/realtime/stop` | Stop real-time processing | Stops Pathway streaming |
+| `GET /api/realtime/health` | Real-time services health | Shows connected wallets and pipeline status |
+| `GET /api/realtime/dashboard` | Realtime metrics | Includes wallet tx/alert counters |
+| `POST /api/realtime/wallet/connect?wallet_address=0x...` | Connect wallet for realtime | Starts wallet monitoring |
+| `GET /api/realtime/wallet/{wallet}/status` | Wallet realtime status | Live status for the connected wallet |
+| `GET /api/realtime/wallet/{wallet}/compliance` | Compliance status | Up-to-date compliance snapshot |
+| `GET /api/realtime/wallet/{wallet}/report` | Compliance report | Detailed report with verification info |
+| `GET /api/realtime/wallet/tracked` | Tracked wallets | List wallets under monitoring |
+| `GET /api/realtime/streams/{name}?wallet_address=0x...` | Stream records | Names: `realtime_news`, `processed_news`, `high_priority_news`, `critical_alerts`, `wallet_transactions`, `wallet_transactions_processed`, `wallet_alerts` |
 
 ---
 
@@ -104,11 +114,12 @@ Experience the platform's capabilities:
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `GOOGLE_API_KEY` | Gemini AI access | ✅ Yes |
+| `GROQ_API_KEY` | Groq LLM access | ✅ Yes |
 | `NEWSAPI_KEY` | News data source | ❌ Optional |
-| `PATHWAY_KEY` | Real-time streaming license | ❌ Optional |
+| `PATHWAY_KEY` | Real-time streaming license | ✅ Needed for realtime |
 | `DATABASE_URL` | Data storage path | ✅ Yes |
 | `FAISS_INDEX_PATH` | Vector index location | ✅ Yes |
+| `ETHERSCAN_API_KEY` | Wallet tx source | ❌ Optional (recommended) |
 
 ---
 
@@ -121,11 +132,11 @@ Experience the platform's capabilities:
 
 ---
 
-## 📈 **Free Tier Limits**
+## 📈 **Notes**
 
-- **Google Gemini**: 1,500 requests/day
-- **NewsAPI**: 200 requests/day
-- **RSS Feeds**: Unlimited government sources
+- Real-time features require a valid `PATHWAY_KEY`.
+- When a wallet connects, the system streams live transactions via Pathway and emits processed transactions and alerts in real time.
+- For LLM responses, set `GROQ_API_KEY`.
 
 ---
 

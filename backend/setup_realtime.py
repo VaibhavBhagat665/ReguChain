@@ -20,7 +20,7 @@ async def setup_realtime_system():
     required_env_vars = {
         'GROQ_API_KEY': 'Groq API for AI analysis',
         'NEWSAPI_KEY': 'News API for real-time news',
-        'PATHWAY_KEY': 'Pathway license for streaming (optional)'
+        'PATHWAY_KEY': 'Pathway license for streaming (required for real-time)'
     }
     
     missing_vars = []
@@ -95,25 +95,19 @@ async def setup_realtime_system():
         if realtime_news_service.api_key:
             print("✅ News API: Configured and ready")
         else:
-            print("⚠️  News API: Not configured (will use mock data)")
-        
-        # Test Gemini API
-        if realtime_news_service.gemini_model:
-            print("✅ Gemini API: Configured and ready")
-        else:
-            print("⚠️  Gemini API: Not configured (will use basic analysis)")
+            print("❌ News API: Not configured - real news fetching will be disabled")
         
         # Test Pathway
         if realtime_pathway_service.pathway_key:
             print("✅ Pathway: Licensed and ready for real-time streaming")
         else:
-            print("⚠️  Pathway: No license (will use simulation mode)")
+            print("❌ Pathway: Missing PATHWAY_KEY - real-time streaming requires a license")
         
         # Test news fetching
         print("\n🔄 Testing News Fetching...")
         async with realtime_news_service:
-            test_articles = await realtime_news_service._generate_mock_news()
-            print(f"✅ Generated {len(test_articles)} test articles")
+            test_articles = await realtime_news_service.fetch_top_headlines(page_size=1)
+            print(f"✅ Fetched {len(test_articles)} headline(s)")
         
         print("\n✅ All services tested successfully!")
         
@@ -127,20 +121,19 @@ async def setup_realtime_system():
     config_content = """# ReguChain Real-time Configuration
 # Copy this to .env and fill in your API keys
 
-# Gemini API (Required for AI analysis)
-GOOGLE_API_KEY=your_gemini_api_key_here
+# Groq API (Required for AI analysis)
+GROQ_API_KEY=your_groq_api_key_here
 
 # News API (Required for real-time news)
 NEWSAPI_KEY=your_news_api_key_here
 
-# Pathway License (Optional - for advanced streaming)
+# Pathway License (Required - for real-time streaming)
 PATHWAY_KEY=your_pathway_license_key_here
 
 # Database Configuration
 DATABASE_URL=sqlite:///./reguchain.db
 
 # Pathway Configuration
-PATHWAY_MODE=streaming
 PATHWAY_STREAMING_MODE=realtime
 PATHWAY_PERSISTENCE_BACKEND=filesystem
 PATHWAY_PERSISTENCE_PATH=./pathway_data
@@ -149,13 +142,13 @@ PATHWAY_MONITORING_LEVEL=info
 # Vector Store Configuration
 VECTOR_DB_TYPE=faiss
 FAISS_INDEX_PATH=./faiss_index
-EMBEDDINGS_PROVIDER=google
-EMBEDDINGS_MODEL=models/embedding-001
-EMBEDDINGS_DIMENSION=768
+EMBEDDINGS_PROVIDER=huggingface
+EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDINGS_DIMENSION=384
 
 # LLM Configuration
-LLM_PROVIDER=google
-LLM_MODEL=gemini-1.5-flash
+LLM_PROVIDER=groq
+LLM_MODEL=llama-3.1-8b-instant
 LLM_TEMPERATURE=0.3
 """
     
@@ -201,7 +194,7 @@ async def startup():
     if success:
         print("✅ Real-time pipeline started successfully")
     else:
-        print("⚠️  Real-time pipeline started in simulation mode")
+        print("❌ Failed to start real-time pipeline (ensure PATHWAY_KEY is set)")
     
     print("🌐 Starting web server...")
     

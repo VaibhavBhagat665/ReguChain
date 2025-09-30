@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ReguChain Watch Demo Script
-# This script demonstrates the real-time RAG system with before/after simulation
+# This script demonstrates the real-time RAG system using real data (no simulation)
 
 echo "================================================"
 echo "ReguChain Watch - Real-time RAG Demo"
@@ -71,7 +71,7 @@ echo "Checking service health..."
 echo "--------------------------"
 
 # Check if services are running
-check_service "http://localhost:8000/health" "Backend API"
+check_service "http://localhost:8000/api/realtime/health" "Backend API"
 BACKEND_STATUS=$?
 
 check_service "http://localhost:3000" "Frontend"
@@ -96,10 +96,9 @@ echo ""
 echo "1. Open your browser at: http://localhost:3000"
 echo ""
 
-echo "2. Initial Query (BEFORE simulation):"
-echo "   - Question: 'Is wallet 0xDEMO0001 involved in any sanctions or illegal activities?'"
-echo "   - Target: '0xDEMO0001'"
-echo "   - Expected: Low to medium risk (depending on initial data)"
+echo "2. Initial Query:"
+echo "   - Question: 'What are the latest SEC enforcement actions related to crypto?'"
+echo "   - Expected: Real-time results based on news/regulatory feeds"
 echo ""
 
 echo "3. Click 'Analyze' and observe:"
@@ -108,16 +107,14 @@ echo "   - Evidence sources from regulatory feeds"
 echo "   - Live feed showing recent ingestions"
 echo ""
 
-echo "4. Simulate New Sanction:"
-echo "   - Click the yellow 'Simulate Ingestion' button"
-echo "   - This will inject new OFAC and news entries for the target"
-echo "   - Watch the Live Feed update with new entries"
+echo "4. Start Real-time Pipeline:"
+echo "   - Use the 'Start Real-time' control or call the API"
+echo "   - Real-time streams will begin processing with Pathway (if licensed)"
 echo ""
 
-echo "5. Re-run Query (AFTER simulation):"
-echo "   - Use the same question and target"
-echo "   - Expected: HIGH RISK (70+ score)"
-echo "   - New evidence will show the simulated sanctions"
+echo "5. Re-run Query:"
+echo "   - Ask follow-ups or request wallet analysis"
+echo "   - Evidence will cite real data sources"
 echo ""
 
 echo "================================================"
@@ -135,16 +132,14 @@ echo "1. Check system status:"
 echo "   curl http://localhost:8000/api/status | jq"
 echo ""
 
-echo "2. Run a query:"
-echo "   curl -X POST http://localhost:8000/api/query \\"
+echo "2. Chat with the agent:"
+echo "   curl -X POST http://localhost:8000/api/agent/chat \\"
 echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"question\": \"Check 0xDEMO0001\", \"target\": \"0xDEMO0001\"}' | jq"
+echo "     -d '{\"message\": \"What are the latest SEC crypto enforcement actions?\"}' | jq"
 echo ""
 
-echo "3. Simulate ingestion:"
-echo "   curl -X POST http://localhost:8000/api/ingest/simulate \\"
-echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"target\": \"0xDEMO0001\"}' | jq"
+echo "3. Start real-time processing:"
+echo "   curl -X POST http://localhost:8000/api/realtime/start | jq"
 echo ""
 
 echo "================================================"
@@ -154,11 +149,11 @@ echo ""
 
 echo "Tips for recording:"
 echo "1. Start recording before opening the browser"
-echo "2. Show the initial query with low/medium risk"
-echo "3. Highlight the 'Simulate Ingestion' button"
-echo "4. Show the Live Feed updating in real-time"
-echo "5. Re-run the same query to show HIGH RISK"
-echo "6. Expand evidence to show new sanctions"
+echo "2. Show an initial agent query and the cited sources"
+echo "3. Start the real-time pipeline (UI or API)"
+echo "4. Show the Live Feed and Dashboard updating in real-time"
+echo "5. Re-run a query to reflect new real data"
+echo "6. Highlight verification URLs in responses"
 echo "7. Total demo time: 2-3 minutes"
 echo ""
 

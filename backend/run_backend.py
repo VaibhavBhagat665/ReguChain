@@ -29,8 +29,8 @@ async def initialize_services():
     from app.database import init_db
     from app.vector_store import vector_store
     from app.langchain_agent import langchain_agent
-    from app.news_service import news_service
-    from app.pathway_service import pathway_service
+    from app.realtime_news_service import realtime_news_service
+    from app.realtime_pathway_service import realtime_pathway_service
     from app.ingest import ingester
     
     # Initialize database
@@ -42,21 +42,19 @@ async def initialize_services():
     stats = vector_store.get_stats()
     logger.info(f"Vector store stats: {stats}")
     
-    # Test news service
-    logger.info("Testing news service...")
+    # Test real-time news service
+    logger.info("Testing real-time news service...")
     try:
-        # Test NewsData API
-        articles = await news_service.fetch_newsdata_articles(
-            query="cryptocurrency regulation",
-            category="business"
-        )
-        logger.info(f"NewsData API test: Found {len(articles)} articles")
-        
-        # Test RSS feeds
-        rss_articles = await news_service.fetch_rss_feeds()
-        logger.info(f"RSS feeds test: Found {len(rss_articles)} articles")
+        async with realtime_news_service:
+            articles = await realtime_news_service.fetch_realtime_news(
+                query="cryptocurrency regulation SEC CFTC",
+                page_size=3
+            )
+            logger.info(f"Realtime news test: Found {len(articles)} articles")
+            headlines = await realtime_news_service.fetch_top_headlines(page_size=1)
+            logger.info(f"Headlines test: Found {len(headlines)} article(s)")
     except Exception as e:
-        logger.error(f"News service test failed: {e}")
+        logger.error(f"Realtime news test failed: {e}")
     
     # Test LangChain agent
     logger.info("Testing LangChain agent...")
@@ -74,16 +72,16 @@ async def initialize_services():
     except Exception as e:
         logger.error(f"Initial ingestion failed: {e}")
     
-    # Start Pathway streaming if available
+    # Start Pathway streaming if available (use realtime service)
     logger.info("Checking Pathway streaming...")
     try:
-        if pathway_service.pathway_key:
-            await pathway_service.start_streaming()
-            logger.info("Pathway streaming started")
+        if realtime_pathway_service.pathway_key:
+            await realtime_pathway_service.start_realtime_pipeline()
+            logger.info("Realtime Pathway pipeline started")
         else:
-            logger.info("Pathway key not configured - streaming disabled")
+            logger.info("PATHWAY_KEY not configured - real-time streaming disabled")
     except Exception as e:
-        logger.warning(f"Pathway streaming not available: {e}")
+        logger.warning(f"Realtime Pathway pipeline not available: {e}")
     
     logger.info("All services initialized successfully!")
 

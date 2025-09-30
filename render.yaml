@@ -6,7 +6,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     envVars:
-      - key: GOOGLE_API_KEY
+      - key: GROQ_API_KEY
         sync: false
       - key: NEWSAPI_KEY
         sync: false
@@ -15,15 +15,15 @@ services:
       - key: FAISS_INDEX_PATH
         value: /app/faiss_index/index
       - key: EMBEDDINGS_PROVIDER
-        value: google
+        value: huggingface
       - key: EMBEDDINGS_MODEL
-        value: models/embedding-001
+        value: sentence-transformers/all-MiniLM-L6-v2
       - key: EMBEDDINGS_DIMENSION
-        value: 768
+        value: 384
       - key: LLM_PROVIDER
-        value: google
+        value: groq
       - key: LLM_MODEL
-        value: gemini-pro
+        value: llama-3.1-8b-instant
       - key: LLM_TEMPERATURE
         value: 0.3
       - key: PATHWAY_MODE
@@ -34,11 +34,13 @@ services:
         value: filesystem
       - key: PATHWAY_PERSISTENCE_PATH
         value: /app/pathway_data
+      - key: PATHWAY_KEY
+        sync: false
       - key: RISK_SCORE_THRESHOLD
         value: 50
       - key: TRANSACTION_THRESHOLD
         value: 10000
-    healthCheckPath: /health
+    healthCheckPath: /api/realtime/health
     disk:
       name: reguchain-data
       mountPath: /app/data
@@ -52,7 +54,7 @@ services:
     dockerContext: ./backend
     dockerCommand: python -m app.ingest_worker
     envVars:
-      - key: GOOGLE_API_KEY
+      - key: GROQ_API_KEY
         sync: false
       - key: NEWSAPI_KEY
         sync: false

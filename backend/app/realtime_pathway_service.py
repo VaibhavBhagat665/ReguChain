@@ -11,9 +11,18 @@ from typing import List, Dict, Optional, Any, AsyncGenerator
 from pathlib import Path
 import pandas as pd
 from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
 
-from .config import PATHWAY_KEY, PATHWAY_PERSISTENCE_PATH, GROQ_API_KEY, NEWSAPI_KEY
+from .config import (
+    PATHWAY_KEY,
+    PATHWAY_PERSISTENCE_PATH,
+    GROQ_API_KEY,
+    NEWSAPI_KEY,
+    TRANSACTION_THRESHOLD,
+    RISK_SCORE_THRESHOLD,
+)
 from .realtime_news_service import realtime_news_service, NewsArticle
+from .blockchain_service import blockchain_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +63,12 @@ class RealTimePathwayService:
         self.persistence_path = Path(PATHWAY_PERSISTENCE_PATH)
         self.news_service = None
         self.streaming_active = False
+        self.is_running = False
+        self.stream_tables = {}
         self.processed_articles = []
         self.wallet_streams = {}  # Track wallet-specific streams
         self.connected_wallets = set()  # Track connected wallets
+        self.seen_tx_hashes = set()  # Deduplicate streamed transactions
         
         # Create directories
         self.persistence_path.mkdir(parents=True, exist_ok=True)
@@ -107,6 +119,8 @@ class RealTimePathwayService:
             
             # Start news collection in background
             asyncio.create_task(self._collect_news_continuously())
+            # Start wallet transaction collection in background
+            asyncio.create_task(self._collect_wallet_transactions_continuously())
             
             # Create and run Pathway pipeline
             await self._create_pathway_pipeline()
@@ -165,10 +179,75 @@ class RealTimePathwayService:
                     logger.error(f"Error in news collection: {e}")
                     await asyncio.sleep(60)  # Wait 1 minute on error
     
+    async def _collect_wallet_transactions_continuously(self):
+        """Continuously collect wallet transactions and write to CSV for Pathway"""
+        wallet_csv_path = self.persistence_path / "streams" / "wallet_transactions.csv"
+        # Initialize CSV with headers if not exists
+        if not wallet_csv_path.exists():
+            with open(wallet_csv_path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    'id', 'timestamp', 'wallet_address', 'hash', 'from_address', 'to_address',
+                    'value', 'block_number'
+                ])
+                writer.writeheader()
+        
+        logger.info("Starting continuous wallet transactions collection...")
+        
+        while self.is_running:
+            try:
+                if not self.connected_wallets:
+                    await asyncio.sleep(15)
+                    continue
+                total_appended = 0
+                for wallet in list(self.connected_wallets):
+                    try:
+                        txs = await blockchain_service.get_transactions(wallet, limit=10)
+                    except Exception as e:
+                        logger.error(f"Error fetching transactions for {wallet}: {e}")
+                        continue
+                    rows = []
+                    for tx in txs or []:
+                        try:
+                            if not getattr(tx, 'hash', None):
+                                continue
+                            if tx.hash in self.seen_tx_hashes:
+                                continue
+                            # Mark as seen to prevent duplicates
+                            self.seen_tx_hashes.add(tx.hash)
+                            # Parse value as float
+                            try:
+                                val = float(tx.value) if tx.value is not None else 0.0
+                            except Exception:
+                                val = 0.0
+                            rows.append({
+                                'id': f"tx_{tx.hash}",
+                                'timestamp': getattr(tx, 'timestamp', datetime.now().isoformat()),
+                                'wallet_address': wallet,
+                                'hash': tx.hash,
+                                'from_address': getattr(tx, 'from_address', ''),
+                                'to_address': getattr(tx, 'to_address', ''),
+                                'value': val,
+                                'block_number': getattr(tx, 'block_number', 0) or 0,
+                            })
+                        except Exception as e:
+                            logger.warning(f"Skipping malformed tx for {wallet}: {e}")
+                            continue
+                    if rows:
+                        with open(wallet_csv_path, 'a', newline='', encoding='utf-8') as f:
+                            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+                            writer.writerows(rows)
+                        total_appended += len(rows)
+                if total_appended:
+                    logger.info(f"Appended {total_appended} wallet transactions to stream")
+                await asyncio.sleep(60)  # 1 minute cadence for demo responsiveness
+            except Exception as e:
+                logger.error(f"Error in wallet transactions collection: {e}")
+                await asyncio.sleep(30)
+    
     async def _process_news_for_pathway(self, article: NewsArticle) -> Optional[ProcessedNews]:
         """Process news article for Pathway streaming"""
         try:
-            # Enhanced analysis with Gemini if available
+            # Enhanced analysis via Groq or use article-provided analysis
             enhanced_analysis = await self._enhanced_analysis(article)
             
             return ProcessedNews(
@@ -191,58 +270,17 @@ class RealTimePathwayService:
             return None
     
     async def _enhanced_analysis(self, article: NewsArticle) -> Dict:
-        """Enhanced analysis using Gemini AI"""
-        if not self.gemini_model:
-            return {
-                'category': article.category,
-                'sentiment': article.sentiment,
-                'relevance_score': article.relevance_score,
-                'regulatory_impact': 'medium',
-                'keywords': article.keywords,
-                'entities': article.entities
-            }
-        
-        try:
-            prompt = f"""
-            Analyze this regulatory/compliance news article and provide detailed analysis:
-            
-            Title: {article.title}
-            Description: {article.description}
-            Source: {article.source}
-            
-            Provide analysis in JSON format:
-            {{
-                "category": "regulatory|compliance|enforcement|guidance|technology|market",
-                "sentiment": "positive|negative|neutral",
-                "relevance_score": 0.0-1.0,
-                "regulatory_impact": "critical|high|medium|low|none",
-                "urgency": "immediate|high|medium|low",
-                "affected_sectors": ["sector1", "sector2"],
-                "compliance_areas": ["AML", "KYC", "Securities", "Derivatives"],
-                "keywords": ["keyword1", "keyword2"],
-                "entities": ["entity1", "entity2"],
-                "risk_level": "critical|high|medium|low",
-                "action_required": "immediate|review|monitor|none"
-            }}
-            
-            Focus on cryptocurrency, blockchain, DeFi, and financial regulatory compliance.
-            """
-            
-            response = self.gemini_model.generate_content(prompt)
-            analysis = json.loads(response.text.strip())
-            
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"Error in enhanced analysis: {e}")
-            return {
-                'category': article.category,
-                'sentiment': article.sentiment,
-                'relevance_score': article.relevance_score,
-                'regulatory_impact': 'medium',
-                'keywords': article.keywords,
-                'entities': article.entities
-            }
+        """Enhanced analysis using Groq if available, otherwise use article fields."""
+        # If Groq client is available, you could refine analysis here similarly to realtime_news_service
+        # For stability in hackathon demo, use the already computed fields from news service
+        return {
+            'category': article.category,
+            'sentiment': article.sentiment,
+            'relevance_score': article.relevance_score,
+            'regulatory_impact': 'medium',
+            'keywords': article.keywords,
+            'entities': article.entities
+        }
     
     async def _create_pathway_pipeline(self):
         """Create and run the Pathway streaming pipeline"""
@@ -267,11 +305,46 @@ class RealTimePathwayService:
             
             # Create streaming input from CSV
             news_csv_path = self.persistence_path / "streams" / "realtime_news.csv"
+            # Ensure file exists with headers before reading
+            if not news_csv_path.exists():
+                with open(news_csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=[
+                        'id', 'timestamp', 'title', 'description', 'source',
+                        'category', 'sentiment', 'relevance_score', 'regulatory_impact',
+                        'keywords', 'entities', 'url'
+                    ])
+                    writer.writeheader()
             
             # Create the streaming table
             news_table = pw.io.csv.read(
                 str(news_csv_path),
                 schema=NewsStreamSchema,
+                mode="streaming"
+            )
+            
+            # Define schema for wallet transactions stream
+            class WalletTxSchema(pw.Schema):
+                id: str
+                timestamp: str
+                wallet_address: str
+                hash: str
+                from_address: str
+                to_address: str
+                value: float
+                block_number: int
+            
+            wallet_csv_path = self.persistence_path / "streams" / "wallet_transactions.csv"
+            # Ensure file exists with headers before reading
+            if not wallet_csv_path.exists():
+                with open(wallet_csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=[
+                        'id', 'timestamp', 'wallet_address', 'hash', 'from_address', 'to_address',
+                        'value', 'block_number'
+                    ])
+                    writer.writeheader()
+            wallet_table = pw.io.csv.read(
+                str(wallet_csv_path),
+                schema=WalletTxSchema,
                 mode="streaming"
             )
             
@@ -315,6 +388,24 @@ class RealTimePathwayService:
                 processed_news.alert_level == "critical"
             )
             
+            # Process wallet transactions with risk and alerts
+            wallet_processed = wallet_table.select(
+                id=wallet_table.id,
+                timestamp=wallet_table.timestamp,
+                wallet_address=wallet_table.wallet_address,
+                hash=wallet_table.hash,
+                from_address=wallet_table.from_address,
+                to_address=wallet_table.to_address,
+                value=wallet_table.value,
+                block_number=wallet_table.block_number,
+                tx_risk=pw.apply(self._tx_risk_score, wallet_table.value),
+                tx_alert=pw.apply(self._tx_alert_level, wallet_table.value)
+            )
+            wallet_alerts = wallet_processed.filter(
+                (wallet_processed.tx_alert == "critical") |
+                (wallet_processed.value > float(TRANSACTION_THRESHOLD))
+            )
+            
             # Output streams to files for monitoring
             pw.io.csv.write(
                 processed_news,
@@ -331,18 +422,32 @@ class RealTimePathwayService:
                 str(self.persistence_path / "streams" / "critical_alerts.csv")
             )
             
+            pw.io.csv.write(
+                wallet_processed,
+                str(self.persistence_path / "streams" / "wallet_transactions_processed.csv")
+            )
+            
+            pw.io.csv.write(
+                wallet_alerts,
+                str(self.persistence_path / "streams" / "wallet_alerts.csv")
+            )
+            
             # Store references
             self.stream_tables = {
                 'news': news_table,
                 'processed': processed_news,
                 'high_priority': high_priority_news,
-                'critical_alerts': critical_alerts
+                'critical_alerts': critical_alerts,
+                'wallet_transactions': wallet_table,
+                'wallet_transactions_processed': wallet_processed,
+                'wallet_alerts': wallet_alerts
             }
             
             logger.info("Pathway pipeline created successfully")
             
-            # Run the computation
-            pw.run(
+            # Run the computation in a background thread to avoid blocking the event loop
+            await asyncio.to_thread(
+                pw.run,
                 monitoring_level=pw.MonitoringLevel.REGULAR,
                 persistence_config=pw.persistence.Config(
                     backend=pw.persistence.Backend.FILESYSTEM,
@@ -388,6 +493,31 @@ class RealTimePathwayService:
         elif regulatory_impact in ['critical', 'high'] and relevance_score > 0.6:
             return 'high'
         elif regulatory_impact in ['high', 'medium'] and relevance_score > 0.4:
+            return 'medium'
+        else:
+            return 'low'
+    
+    def _tx_risk_score(self, value: float) -> float:
+        """Simple normalized risk score for a transaction value."""
+        try:
+            v = float(value)
+        except Exception:
+            v = 0.0
+        # Normalize against a high watermark (e.g., 1,000,000)
+        score = min(v / max(float(TRANSACTION_THRESHOLD) * 20.0, 1.0), 1.0)
+        return score
+    
+    def _tx_alert_level(self, value: float) -> str:
+        """Alert level based on transaction size."""
+        try:
+            v = float(value)
+        except Exception:
+            v = 0.0
+        if v >= float(TRANSACTION_THRESHOLD) * 10:
+            return 'critical'
+        elif v >= float(TRANSACTION_THRESHOLD):
+            return 'high'
+        elif v >= float(TRANSACTION_THRESHOLD) / 5:
             return 'medium'
         else:
             return 'low'
@@ -453,7 +583,25 @@ class RealTimePathwayService:
                     'count': len(df_alerts),
                     'recent_count': len(df_alerts[df_alerts['timestamp'] > (datetime.now() - timedelta(hours=1)).isoformat()]) if 'timestamp' in df_alerts.columns else 0
                 }
-            
+
+            # Wallet transactions processed statistics
+            wallet_proc_file = self.persistence_path / "streams" / "wallet_transactions_processed.csv"
+            if wallet_proc_file.exists():
+                df_w = pd.read_csv(wallet_proc_file)
+                stats['wallet_transactions'] = {
+                    'count': len(df_w),
+                    'high_risk': len(df_w[df_w['tx_alert'].isin(['high', 'critical'])]) if 'tx_alert' in df_w.columns else 0
+                }
+
+            # Wallet alerts statistics
+            wallet_alerts_file = self.persistence_path / "streams" / "wallet_alerts.csv"
+            if wallet_alerts_file.exists():
+                df_wa = pd.read_csv(wallet_alerts_file)
+                stats['wallet_alerts'] = {
+                    'count': len(df_wa),
+                    'recent_count': len(df_wa[df_wa['timestamp'] > (datetime.now() - timedelta(hours=1)).isoformat()]) if 'timestamp' in df_wa.columns else 0
+                }
+        
         except Exception as e:
             logger.error(f"Error getting stream statistics: {e}")
             stats['error'] = str(e)
@@ -465,8 +613,8 @@ class RealTimePathwayService:
         self.is_running = False
         logger.info("Real-time pipeline stopped")
     
-    async def query_stream(self, stream_name: str, limit: int = 10) -> List[Dict]:
-        """Query a specific stream"""
+    async def query_stream(self, stream_name: str, limit: int = 10, wallet_address: Optional[str] = None) -> List[Dict]:
+        """Query a specific stream with optional wallet filter"""
         try:
             stream_file = self.persistence_path / "streams" / f"{stream_name}.csv"
             
@@ -474,6 +622,14 @@ class RealTimePathwayService:
                 return []
             
             df = pd.read_csv(stream_file)
+            
+            # Optional wallet filter for wallet streams
+            if wallet_address and 'wallet_address' in df.columns:
+                try:
+                    df['wallet_address'] = df['wallet_address'].astype(str)
+                    df = df[df['wallet_address'].str.lower() == wallet_address.lower()]
+                except Exception:
+                    pass
             
             # Return most recent records
             if 'timestamp' in df.columns:
@@ -514,11 +670,15 @@ class RealTimePathwayService:
             if pathway_available:
                 await self._start_wallet_pathway_stream(wallet_address)
             
-            # Perform initial compliance check
+            # Ensure wallet is tracked and perform initial compliance check
             try:
                 from .wallet_tracking_service import wallet_tracking_service
+                # Add wallet to tracking (no-op if already tracked)
+                await wallet_tracking_service.add_wallet_for_tracking(wallet_address)
+                # Fetch initial compliance status
                 initial_status = await wallet_tracking_service.get_wallet_compliance_status(wallet_address)
-            except:
+            except Exception as e:
+                logger.warning(f"Initial compliance check for {wallet_address} pending: {e}")
                 initial_status = {"status": "checking", "message": "Initial compliance check in progress"}
             
             logger.info(f"Started real-time monitoring for wallet: {wallet_address}")
@@ -552,7 +712,7 @@ class RealTimePathwayService:
     async def _start_wallet_pathway_stream(self, wallet_address: str):
         """Start Pathway streaming for specific wallet transactions"""
         if not pathway_available:
-            logger.warning("Pathway not available - using simulation mode")
+            logger.error("Pathway not available - install and configure license to enable real-time streaming")
             return
         
         try:
@@ -560,7 +720,7 @@ class RealTimePathwayService:
             logger.info(f"Pathway real-time stream initialized for wallet: {wallet_address}")
             
             # This would set up actual Pathway streaming in production
-            # For now, we'll use periodic monitoring
+            # TODO: Add wallet transaction CSV stream and include it in the Pathway pipeline
             
         except Exception as e:
             logger.error(f"Error starting Pathway stream for wallet {wallet_address}: {e}")
@@ -621,7 +781,7 @@ class RealTimePathwayService:
                     "transaction_monitoring": "Active",
                     "sanctions_screening": "Active", 
                     "news_correlation": "Active",
-                    "pathway_streaming": "Available" if pathway_available else "Simulation Mode"
+                    "pathway_streaming": "Available" if pathway_available else "Unavailable"
                 },
                 "monitoring_features": [
                     "Real-time transaction analysis",
@@ -633,12 +793,12 @@ class RealTimePathwayService:
                 "last_updated": datetime.now().isoformat()
             }
         
-    except Exception as e:
-        logger.error(f"Error getting wallet real-time status: {e}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        except Exception as e:
+            logger.error(f"Error getting wallet real-time status: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
     
     async def get_connected_wallets_summary(self) -> Dict:
         """Get summary of all connected wallets"""
@@ -665,9 +825,9 @@ class RealTimePathwayService:
                 "last_updated": datetime.now().isoformat()
             }
         
-    except Exception as e:
-        logger.error(f"Error getting wallet summary: {e}")
-        return {"error": str(e)}
+        except Exception as e:
+            logger.error(f"Error getting wallet summary: {e}")
+            return {"error": str(e)}
 
 # Create global instance
 realtime_pathway_service = RealTimePathwayService()

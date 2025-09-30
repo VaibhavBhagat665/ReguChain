@@ -11,7 +11,7 @@ import aiohttp
 import json
 from dataclasses import dataclass
 
-from .config import GOOGLE_API_KEY
+# No Google dependency required here
 
 logger = logging.getLogger(__name__)
 
@@ -83,20 +83,13 @@ class BlockchainDataService:
             )
     
     async def get_transactions(self, address: str, limit: int = 20) -> List[BlockchainTransaction]:
-        """Get recent transactions for a wallet"""
+        """Get recent transactions for a wallet (real APIs only)"""
         try:
-            # Try Etherscan first (free tier available)
             transactions = await self._get_etherscan_transactions(address, limit)
-            
-            if not transactions:
-                # Fallback to mock data for demo purposes
-                transactions = self._generate_mock_transactions(address, limit)
-            
-            return transactions
-            
+            return transactions or []
         except Exception as e:
             logger.error(f"Error getting transactions for {address}: {e}")
-            return self._generate_mock_transactions(address, limit)
+            return []
     
     async def _get_wallet_balance(self, address: str) -> Dict[str, Any]:
         """Get wallet balance from multiple sources"""
@@ -130,13 +123,11 @@ class BlockchainDataService:
                                 "source": "etherscan"
                             }
             
-            # Fallback to mock data
+            # On failure, return empty balance to avoid mock data
             return {
-                "balance": "1.234567",
-                "balance_wei": "1234567000000000000",
-                "source": "mock",
-                "first_seen": "2023-01-01T00:00:00Z",
-                "last_seen": datetime.utcnow().isoformat() + "Z"
+                "balance": "0",
+                "balance_wei": "0",
+                "source": "unavailable"
             }
             
         except Exception as e:
@@ -167,8 +158,8 @@ class BlockchainDataService:
                         if data.get("result"):
                             return int(data["result"], 16)  # Convert hex to int
             
-            # Fallback
-            return 42  # Mock transaction count
+            # On failure, return 0 to avoid mock values
+            return 0
             
         except Exception as e:
             logger.error(f"Error getting transaction count for {address}: {e}")
@@ -221,38 +212,7 @@ class BlockchainDataService:
             logger.error(f"Error getting Etherscan transactions for {address}: {e}")
             return []
     
-    def _generate_mock_transactions(self, address: str, limit: int) -> List[BlockchainTransaction]:
-        """Generate mock transaction data for demo purposes"""
-        transactions = []
-        base_time = datetime.utcnow()
-        
-        mock_addresses = [
-            "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb4",
-            "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-            "0xA0b86a33E6411e3e4211d5c5Ac6C8e8a7C1d8b2c",
-            "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
-            "0x6B175474E89094C44Da98b954EedeAC495271d0F"
-        ]
-        
-        for i in range(min(limit, 10)):
-            # Create realistic mock transaction
-            is_incoming = i % 2 == 0
-            from_addr = mock_addresses[i % len(mock_addresses)] if is_incoming else address
-            to_addr = address if is_incoming else mock_addresses[i % len(mock_addresses)]
-            
-            transaction = BlockchainTransaction(
-                hash=f"0x{''.join([hex(hash(f'{address}{i}{base_time}'))[2:10] for _ in range(8)])}",
-                from_address=from_addr,
-                to_address=to_addr,
-                value=str(round(0.001 + (i * 0.1), 6)),
-                gas_used=str(21000 + (i * 1000)),
-                timestamp=(base_time - timedelta(hours=i*2)).isoformat(),
-                block_number=18500000 + i,
-                status="success"
-            )
-            transactions.append(transaction)
-        
-        return transactions
+    # Removed mock transaction generator to enforce real data usage
     
     async def _rate_limit(self, service: str):
         """Simple rate limiting"""

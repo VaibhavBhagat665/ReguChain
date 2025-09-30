@@ -17,7 +17,7 @@ from langchain.callbacks import StreamingStdOutCallbackHandler
 from langchain.schema import Document
 
 from .config import (
-    GOOGLE_API_KEY, GROQ_API_KEY, LLM_MODEL, LLM_TEMPERATURE, 
+    GROQ_API_KEY, LLM_MODEL, LLM_TEMPERATURE, 
     LLM_PROVIDER, FAISS_INDEX_PATH, DISABLE_EMBEDDINGS, DISABLE_VECTOR_STORE
 )
 from .realtime_news_service import realtime_news_service
@@ -50,34 +50,17 @@ class LangChainAgent:
         self._initialize_agent()
     
     def _initialize_llm(self):
-        """Initialize LLM - Groq if available, otherwise Google Gemini"""
+        """Initialize LLM - Groq only"""
         try:
-            if LLM_PROVIDER == 'groq' and GROQ_API_KEY:
-                # Use Groq instead of Gemini
+            if GROQ_API_KEY:
                 self.llm = create_groq_langchain_agent(GROQ_API_KEY, LLM_MODEL)
                 logger.info(f"Groq LLM initialized successfully with model: {LLM_MODEL}")
-            elif GOOGLE_API_KEY:
-                # Fallback to Gemini
-                try:
-                    from langchain_google_genai import GoogleGenerativeAI
-                    self.llm = GoogleGenerativeAI(
-                        model=LLM_MODEL,
-                        google_api_key=GOOGLE_API_KEY,
-                        temperature=LLM_TEMPERATURE,
-                        max_output_tokens=2048
-                    )
-                    logger.info("Google Gemini LLM initialized successfully")
-                except Exception as e:
-                    logger.error(f"Gemini initialization failed: {e}")
-                    # Use simple Groq agent as fallback
-                    if GROQ_API_KEY:
-                        self.simple_groq = SimpleGroqAgent(GROQ_API_KEY, LLM_MODEL)
-                        logger.info("Using simple Groq agent as fallback")
             else:
-                logger.warning("No LLM API keys available")
+                # Use simple Groq agent if API not available (limited capability)
+                self.simple_groq = SimpleGroqAgent(None, LLM_MODEL)
+                logger.warning("GROQ_API_KEY missing; using simple Groq agent with limited features")
         except Exception as e:
             logger.error(f"Error initializing LLM: {e}")
-            # Fallback to a simple mock LLM for testing
             self.llm = None
     
     def _initialize_embeddings(self):
@@ -88,20 +71,15 @@ class LangChainAgent:
             return
             
         try:
-            # Try Google embeddings first if not disabled
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings
-            self.embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",
-                google_api_key=GOOGLE_API_KEY
-            )
-            logger.info("Google embeddings initialized successfully")
-        except Exception as e:
-            logger.warning(f"Google embeddings failed, using HuggingFace: {e}")
-            # Fallback to HuggingFace embeddings
+            # Use HuggingFace embeddings only (no Google)
             self.embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
                 model_kwargs={'device': 'cpu'}
             )
+            logger.info("HuggingFace embeddings initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing HuggingFace embeddings: {e}")
+            self.embeddings = None
     
     def _initialize_vector_store(self):
         """Initialize FAISS vector store"""
@@ -131,50 +109,54 @@ class LangChainAgent:
     def _initialize_tools(self):
         """Initialize agent tools"""
         
-        # Tool for searching regulatory news
+        # Tool for searching regulatory news (uses realtime_news_service)
         def search_news_tool(query: str) -> str:
             """Search for regulatory news and updates"""
             try:
                 import asyncio
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                articles = loop.run_until_complete(news_service.search_news(query))
-                
+                articles = loop.run_until_complete(
+                    realtime_news_service.fetch_realtime_news(query=query, page_size=5)
+                )
                 if articles:
                     results = []
-                    for article in articles[:5]:  # Top 5 results
-                        results.append(f"Title: {article['title']}\n"
-                                     f"Source: {article['source']}\n"
-                                     f"Description: {article['description'][:200]}...\n"
-                                     f"URL: {article['url']}\n")
+                    for a in articles[:5]:
+                        results.append(
+                            f"Title: {a.title}\n"
+                            f"Source: {a.source}\n"
+                            f"Relevance: {a.relevance_score:.2f}\n"
+                            f"URL: {a.url}\n"
+                        )
                     return "\n".join(results)
-                else:
-                    return "No news articles found for the query."
+                return "No news articles found for the query."
             except Exception as e:
                 return f"Error searching news: {str(e)}"
         
         # Tool for wallet analysis
         def analyze_wallet_tool(address: str) -> str:
-            """Analyze blockchain wallet for compliance risks"""
+            """Analyze blockchain wallet for compliance risks (real APIs)"""
             try:
-                # Get transaction data
-                tx_data = blockchain_service.get_recent_transactions(address, limit=10)
-                
-                # Calculate risk score
-                risk_score, risk_factors = risk_engine.calculate_risk_score(
-                    address, [], tx_data
-                )
-                
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                txs = loop.run_until_complete(blockchain_service.get_transactions(address, limit=10))
+                legacy_txs = [{
+                    "tx": tx.hash,
+                    "amount": float(tx.value),
+                    "timestamp": tx.timestamp,
+                    "from": tx.from_address,
+                    "to": tx.to_address
+                } for tx in txs]
+                risk_score, risk_factors = risk_engine.calculate_risk_score(address, [], legacy_txs)
                 result = f"Wallet Analysis for {address}:\n"
                 result += f"Risk Score: {risk_score}/100\n"
                 result += f"Risk Level: {'HIGH' if risk_score >= 70 else 'MEDIUM' if risk_score >= 40 else 'LOW'}\n"
-                result += f"Total Transactions Analyzed: {len(tx_data)}\n"
-                
+                result += f"Total Transactions Analyzed: {len(legacy_txs)}\n"
                 if risk_factors:
                     result += "\nRisk Factors:\n"
                     for factor in risk_factors[:5]:
                         result += f"- {factor}\n"
-                
                 return result
             except Exception as e:
                 return f"Error analyzing wallet: {str(e)}"
@@ -200,35 +182,28 @@ class LangChainAgent:
         
         # Tool for getting regulatory updates
         def get_regulatory_updates_tool(hours: str = "24") -> str:
-            """Get recent regulatory updates from the last N hours"""
+            """Get recent regulatory updates from the last N hours (via realtime news)"""
             try:
                 import asyncio
+                from datetime import datetime, timedelta
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
                 hours_int = int(hours)
+                since = (datetime.utcnow() - timedelta(hours=hours_int)).isoformat()
                 articles = loop.run_until_complete(
-                    news_service.get_regulatory_updates(hours=hours_int)
-                )
-                
-                if articles:
-                    # Analyze sentiment
-                    sentiment_analysis = loop.run_until_complete(
-                        news_service.analyze_sentiment(articles)
+                    realtime_news_service.fetch_realtime_news(
+                        query="SEC OR CFTC OR FINRA OR OFAC OR regulation OR enforcement",
+                        page_size=20
                     )
-                    
+                )
+                recent = [a for a in articles if a.published_at >= since]
+                if recent:
                     result = f"Regulatory Updates (Last {hours_int} hours):\n"
-                    result += f"Total Updates: {len(articles)}\n"
-                    result += f"Overall Sentiment: {sentiment_analysis['overall']}\n\n"
-                    
-                    for article in articles[:5]:
-                        result += f"• {article['title']}\n"
-                        result += f"  Source: {article['source']} | "
-                        result += f"Published: {article['published_at']}\n\n"
-                    
+                    result += f"Total Updates: {len(recent)}\n\n"
+                    for a in recent[:5]:
+                        result += f"• {a.title}\n  Source: {a.source} | Published: {a.published_at}\n\n"
                     return result
-                else:
-                    return f"No regulatory updates found in the last {hours_int} hours."
+                return f"No regulatory updates found in the last {hours_int} hours."
             except Exception as e:
                 return f"Error getting regulatory updates: {str(e)}"
         

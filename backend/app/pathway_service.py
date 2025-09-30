@@ -27,7 +27,7 @@ try:
     pathway_available = True
     logger.info("Pathway library imported successfully - Real-time processing enabled")
 except ImportError:
-    logger.warning("Pathway library not available - Using enhanced simulation mode")
+    logger.warning("Pathway library not available - real-time streaming disabled")
 
 class ComplianceLevel(Enum):
     """Compliance risk levels"""
@@ -117,7 +117,8 @@ class PathwayService:
     def create_compliance_monitoring_pipeline(self) -> Dict[str, Any]:
         """Create comprehensive compliance monitoring pipeline with multiple data streams"""
         if not pathway_available:
-            return self._simulate_compliance_pipeline()
+            logger.error("Pathway not available - cannot create pipeline")
+            return {"status": "unavailable", "streams": [], "message": "Pathway not available"}
         
         try:
             # Create multiple interconnected streams
@@ -153,7 +154,8 @@ class PathwayService:
     def create_news_stream(self) -> Optional[Any]:
         """Create enhanced real-time news data stream with advanced processing"""
         if not pathway_available:
-            return self._simulate_news_stream()
+            logger.error("Pathway not available - news stream disabled")
+            return None
         
         try:
             # Define schema for news data
@@ -321,7 +323,8 @@ class PathwayService:
     def create_regulatory_updates_stream(self) -> Optional[Any]:
         """Create stream for regulatory updates and compliance changes"""
         if not pathway_available:
-            return self._simulate_regulatory_stream()
+            logger.error("Pathway not available - regulatory updates stream disabled")
+            return None
         
         try:
             class RegulatorySchema(pw.Schema):
@@ -562,28 +565,12 @@ class PathwayService:
         # Would generate alerts based on patterns and thresholds
         return compliance_data
     
-    def _simulate_compliance_pipeline(self) -> Dict[str, Any]:
-        """Simulate compliance pipeline when Pathway not available"""
-        return {
-            "status": "simulated",
-            "streams": ["news", "transactions", "regulatory", "alerts"],
-            "monitoring_level": "simulation",
-            "message": "Using simulated data - Pathway not available"
-        }
-    
-    def _simulate_news_stream(self) -> Dict:
-        """Simulate news stream data"""
-        return {"type": "simulated_news", "count": 10}
-    
-    def _simulate_regulatory_stream(self) -> Dict:
-        """Simulate regulatory stream data"""
-        return {"type": "simulated_regulatory", "count": 5}
+    # Removed simulation helpers to enforce real data usage
     
     async def start_streaming(self):
         """Start enhanced real-time data streaming with Pathway"""
         if not pathway_available:
-            logger.warning("Pathway not available - using simulation mode")
-            await self._start_simulation_mode()
+            logger.error("Pathway not available - cannot start streaming")
             return
         
         try:
@@ -618,60 +605,9 @@ class PathwayService:
             logger.error(f"Error starting Pathway streaming: {e}")
             self.is_running = False
     
-    async def _start_simulation_mode(self):
-        """Start simulation mode when Pathway not available"""
-        self.is_running = True
-        
-        # Generate simulated streams
-        self.data_streams["simulated_news"] = await mock_generator.generate_mock_news()
-        self.data_streams["simulated_transactions"] = await mock_generator.generate_mock_transactions()
-        
-        # Generate simulated alerts
-        self.compliance_alerts = self._generate_simulated_alerts()
-        
-        logger.info("Simulation mode started - demonstrating Pathway capabilities")
+    # Removed simulation mode and generators to enforce real data usage
     
-    def _generate_simulated_alerts(self) -> List[ComplianceAlert]:
-        """Generate simulated compliance alerts for demonstration"""
-        alerts = [
-            ComplianceAlert(
-                id="alert_001",
-                timestamp=datetime.utcnow(),
-                level=ComplianceLevel.CRITICAL,
-                category="AML",
-                title="High-Risk Transaction Pattern Detected",
-                description="Multiple transactions detected with structuring patterns below reporting threshold",
-                affected_entities=["exchange_1", "wallet_provider_2"],
-                regulatory_body="FinCEN",
-                recommended_action="Immediate review and SAR filing if confirmed",
-                confidence_score=0.92
-            ),
-            ComplianceAlert(
-                id="alert_002",
-                timestamp=datetime.utcnow() - timedelta(hours=2),
-                level=ComplianceLevel.HIGH,
-                category="Regulatory",
-                title="New SEC Enforcement Action",
-                description="SEC announces enforcement action against unregistered crypto securities offering",
-                affected_entities=["defi_protocols", "exchanges"],
-                regulatory_body="SEC",
-                recommended_action="Review token listings and ensure compliance with securities laws",
-                confidence_score=0.88
-            ),
-            ComplianceAlert(
-                id="alert_003",
-                timestamp=datetime.utcnow() - timedelta(hours=5),
-                level=ComplianceLevel.MEDIUM,
-                category="Sanctions",
-                title="OFAC List Update",
-                description="New addresses added to OFAC SDN list related to ransomware operations",
-                affected_entities=["all_entities"],
-                regulatory_body="OFAC",
-                recommended_action="Update screening systems with new sanctioned addresses",
-                confidence_score=0.95
-            )
-        ]
-        return alerts
+    # Removed simulated alerts generator
     
     def _log_streaming_metrics(self):
         """Log streaming metrics for monitoring"""
@@ -700,19 +636,9 @@ class PathwayService:
             logger.warning(f"Stream '{stream_name}' not found")
             return []
         
-        # If in simulation mode, return simulated data
+        # Pathway-only querying; if unavailable, return empty
         if not pathway_available:
-            if stream_name == "alerts":
-                return [{
-                    "id": alert.id,
-                    "timestamp": alert.timestamp.isoformat(),
-                    "level": alert.level.value,
-                    "title": alert.title,
-                    "description": alert.description,
-                    "confidence_score": alert.confidence_score
-                } for alert in self.compliance_alerts[:5]]
-            elif stream_name in self.data_streams:
-                return self.data_streams[stream_name][:5] if isinstance(self.data_streams[stream_name], list) else []
+            return []
         
         # In production, would execute complex Pathway queries
         return []
@@ -723,22 +649,9 @@ class PathwayService:
             logger.warning("Document index not created")
             return []
         
-        # Simulate search results for demonstration
+        # Pathway unavailable -> no similarity results
         if not pathway_available:
-            return [
-                {
-                    "id": "doc_1",
-                    "content": "SEC regulatory guidance on digital asset securities",
-                    "similarity_score": 0.92,
-                    "metadata": {"source": "SEC", "date": "2024-01-15"}
-                },
-                {
-                    "id": "doc_2",
-                    "content": "CFTC enforcement action against unregistered derivatives exchange",
-                    "similarity_score": 0.87,
-                    "metadata": {"source": "CFTC", "date": "2024-01-10"}
-                }
-            ][:k]
+            return []
         
         # In production, would use Pathway's KNN index for similarity search
         return []
@@ -780,23 +693,18 @@ class PathwayService:
                 "monitoring_thresholds": self.risk_thresholds
             },
             "pathway_features": {
-                "incremental_computation": "Automatic updates on new data",
-                "time_windowing": "Sliding windows for temporal analysis",
-                "pattern_detection": "Real-time AML and fraud detection",
-                "multi_source_join": "Unified view from multiple data streams",
-                "vector_search": "Semantic similarity for compliance documents",
-                "persistence": "State recovery after restarts",
-                "scalability": "Rust engine for high-performance processing"
+                "incremental_computation": "Automatic updates on new data" if pathway_available else "Unavailable (Pathway not available)",
+                "time_windowing": "Sliding windows for temporal analysis" if pathway_available else "Unavailable (Pathway not available)",
+                "pattern_detection": "Real-time AML and fraud detection" if pathway_available else "Unavailable (Pathway not available)",
+                "multi_source_join": "Unified view from multiple data streams" if pathway_available else "Unavailable (Pathway not available)",
             }
         }
-        
         return dashboard
     
     def get_stream_statistics(self, stream_name: str) -> Dict[str, Any]:
         """Get statistics for a specific data stream"""
         if stream_name not in self.data_streams:
             return {"error": f"Stream '{stream_name}' not found"}
-        
         # Return statistics about the stream
         stream_data = self.data_streams[stream_name]
         
@@ -819,90 +727,3 @@ class PathwayService:
 
 # Create singleton instance
 pathway_service = PathwayService()
-
-# Enhanced Mock data generator for testing without Pathway
-class MockStreamGenerator:
-    """Generate enhanced mock streaming data for demonstration"""
-    
-    @staticmethod
-    async def generate_mock_news():
-        """Generate mock news data"""
-        news_items = [
-            {
-                "title": "SEC Announces New Cryptocurrency Regulations - Immediate Compliance Required",
-                "description": "The Securities and Exchange Commission released comprehensive guidelines for digital asset compliance, requiring immediate action from all crypto exchanges and DeFi protocols.",
-                "url": "https://example.com/sec-crypto-regs",
-                "source": "SEC",
-                "published_at": datetime.utcnow().isoformat(),
-                "keywords": ["SEC", "cryptocurrency", "regulations", "enforcement", "immediate"],
-                "sentiment": "negative",
-                "compliance_impact": "critical",
-                "urgency": "high"
-            },
-            {
-                "title": "CFTC Issues Warning on DeFi Platforms - Risk Assessment Required",
-                "description": "Commodity Futures Trading Commission warns investors about risks in decentralized finance, highlighting potential violations of derivatives regulations.",
-                "url": "https://example.com/cftc-defi-warning",
-                "source": "CFTC",
-                "published_at": datetime.utcnow().isoformat(),
-                "keywords": ["CFTC", "DeFi", "warning", "derivatives", "compliance"],
-                "sentiment": "negative",
-                "compliance_impact": "high",
-                "urgency": "medium"
-            },
-            {
-                "title": "FinCEN Updates AML Requirements for Virtual Asset Service Providers",
-                "description": "Financial Crimes Enforcement Network announces enhanced anti-money laundering requirements for cryptocurrency exchanges and wallet providers.",
-                "url": "https://example.com/fincen-aml-update",
-                "source": "FinCEN",
-                "published_at": (datetime.utcnow() - timedelta(hours=3)).isoformat(),
-                "keywords": ["FinCEN", "AML", "KYC", "VASP", "compliance"],
-                "sentiment": "neutral",
-                "compliance_impact": "high",
-                "urgency": "high"
-            },
-            {
-                "title": "OFAC Adds New Crypto Addresses to SDN List",
-                "description": "Office of Foreign Assets Control sanctions additional cryptocurrency addresses linked to ransomware operations and illicit activities.",
-                "url": "https://example.com/ofac-sdn-update",
-                "source": "OFAC",
-                "published_at": (datetime.utcnow() - timedelta(hours=6)).isoformat(),
-                "keywords": ["OFAC", "sanctions", "SDN", "ransomware", "blacklist"],
-                "sentiment": "negative",
-                "compliance_impact": "critical",
-                "urgency": "critical"
-            },
-            {
-                "title": "EU MiCA Regulation Implementation Timeline Released",
-                "description": "European Union publishes detailed implementation timeline for Markets in Crypto-Assets regulation, affecting all crypto service providers in EU.",
-                "url": "https://example.com/eu-mica-timeline",
-                "source": "EU Commission",
-                "published_at": (datetime.utcnow() - timedelta(days=1)).isoformat(),
-                "keywords": ["MiCA", "EU", "regulation", "compliance", "timeline"],
-                "sentiment": "neutral",
-                "compliance_impact": "medium",
-                "urgency": "low"
-            }
-        ]
-        return news_items
-    
-    @staticmethod
-    async def generate_mock_transactions():
-        """Generate mock transaction data"""
-        import random
-        
-        transactions = []
-        for i in range(5):
-            transactions.append({
-                "hash": f"0x{''.join(random.choices('0123456789abcdef', k=64))}",
-                "from_address": f"0x{''.join(random.choices('0123456789abcdef', k=40))}",
-                "to_address": f"0x{''.join(random.choices('0123456789abcdef', k=40))}",
-                "value": random.uniform(0.1, 10000),
-                "timestamp": datetime.utcnow().isoformat(),
-                "block_number": random.randint(15000000, 16000000),
-                "gas_used": random.uniform(21000, 100000)
-            })
-        
-        return transactions
-
-mock_generator = MockStreamGenerator()

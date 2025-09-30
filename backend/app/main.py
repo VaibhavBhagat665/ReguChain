@@ -12,7 +12,7 @@ from .models import (
     StatusResponse, StatusUpdate, ConversationHistory, AgentCapability,
     Evidence, OnchainMatch, TransactionData
 )
-from .config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE
+from .config import LLM_MODEL, LLM_TEMPERATURE
 from .database import get_recent_documents, get_documents_by_ids, get_transactions_for_address
 from .vector_store import vector_store
 from .risk import risk_engine
@@ -24,14 +24,7 @@ from .realtime_api import realtime_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Try to import Gemini for LLM generation
-genai = None
-try:
-    import google.generativeai as genai
-    genai.configure(api_key=GOOGLE_API_KEY)
-    logger.info("Gemini API configured successfully")
-except ImportError:
-    logger.warning("Google GenAI SDK not available")
+# LLM initialization is handled in langchain_agent via Groq.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,6 +38,17 @@ async def lifespan(app: FastAPI):
         logger.info("Initial data ingestion completed")
     except Exception as e:
         logger.error(f"Error during initial ingestion: {e}")
+    
+    # Auto-start realtime Pathway pipeline if available
+    try:
+        from .realtime_pathway_service import realtime_pathway_service
+        if getattr(realtime_pathway_service, 'pathway_key', None):
+            logger.info("PATHWAY_KEY detected - starting realtime Pathway pipeline")
+            asyncio.create_task(realtime_pathway_service.start_realtime_pipeline())
+        else:
+            logger.info("PATHWAY_KEY not configured - realtime Pathway pipeline disabled")
+    except Exception as e:
+        logger.warning(f"Could not start realtime Pathway pipeline: {e}")
     
     yield
     

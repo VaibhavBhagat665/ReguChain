@@ -23,7 +23,7 @@ try:
     pathway_available = True
     logger.info("Pathway available for wallet tracking")
 except ImportError:
-    logger.warning("Pathway not available - using simulation mode")
+    logger.warning("Pathway not available - real-time streaming disabled")
 
 @dataclass
 class WalletActivity:

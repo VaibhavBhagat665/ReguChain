@@ -10,7 +10,6 @@ from typing import List, Dict, Optional, AsyncGenerator
 import aiohttp
 import requests
 from dataclasses import dataclass, asdict
-from newsapi import NewsApiClient
 
 from .config import NEWSAPI_KEY, GROQ_API_KEY
 
@@ -102,44 +101,131 @@ class RealTimeNewsService:
                                  language: str = "en",
                                  sort_by: str = "publishedAt",
                                  page_size: int = 100) -> List[NewsArticle]:
-        """Fetch real-time news from News API"""
-        if not self.client:
-            logger.warning("News API client not initialized - using mock data")
-            return await self._generate_mock_news()
-        
-        try:
-            # Fetch everything endpoint for real-time news
-            articles_response = self.client.get_everything(
-                q=query,
-                sources=sources,
-                language=language,
-                sort_by=sort_by,
-                page_size=page_size,
-                from_param=(datetime.now() - timedelta(hours=24)).isoformat()
-            )
-            
-            if articles_response['status'] != 'ok':
-                logger.error(f"News API error: {articles_response.get('message', 'Unknown error')}")
+        """Fetch real-time news from News API or NewsData.io"""
+        # NewsAPI.org client path
+        if self.api_type == "newsapi":
+            if not self.client:
+                logger.error("News API client not initialized - missing NEWSAPI_KEY")
                 return []
-            
-            articles = []
-            for article_data in articles_response['articles']:
-                try:
-                    # Process each article with AI analysis
-                    processed_article = await self._process_article(article_data)
-                    if processed_article:
-                        articles.append(processed_article)
-                except Exception as e:
-                    logger.error(f"Error processing article: {e}")
-                    continue
-            
-            logger.info(f"Fetched and processed {len(articles)} articles from News API")
-            return articles
-            
+            try:
+                articles_response = self.client.get_everything(
+                    q=query,
+                    sources=sources,
+                    language=language,
+                    sort_by=sort_by,
+                    page_size=page_size,
+                    from_param=(datetime.now() - timedelta(hours=24)).isoformat()
+                )
+                if articles_response['status'] != 'ok':
+                    logger.error(f"News API error: {articles_response.get('message', 'Unknown error')}")
+                    return []
+                articles: List[NewsArticle] = []
+                for article_data in articles_response['articles']:
+                    try:
+                        processed_article = await self._process_article(article_data)
+                        if processed_article:
+                            articles.append(processed_article)
+                    except Exception as e:
+                        logger.error(f"Error processing article: {e}")
+                        continue
+                logger.info(f"Fetched and processed {len(articles)} articles from News API")
+                return articles
+            except Exception as e:
+                logger.error(f"Error fetching news from API: {e}")
+                logger.warning("News API failed - returning empty list instead of fake data")
+                return []
+        
+        # NewsData.io HTTP path
+        if self.api_type == "newsdata":
+            try:
+                import aiohttp
+                url = "https://newsdata.io/api/1/news"
+                params = {
+                    "apikey": self.api_key,
+                    "q": query,
+                    "language": language,
+                    "page": 1
+                }
+                articles: List[NewsArticle] = []
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, params=params) as r:
+                        data = await r.json()
+                        for a in data.get('results', [])[:page_size]:
+                            article_data = {
+                                'title': a.get('title'),
+                                'description': a.get('description'),
+                                'content': a.get('content') or a.get('description') or '',
+                                'url': a.get('link'),
+                                'source': {'name': (a.get('source_id') or 'NewsData.io')},
+                                'author': a.get('creator', ['Unknown'])[0] if a.get('creator') else 'Unknown',
+                                'publishedAt': a.get('pubDate')
+                            }
+                            processed = await self._process_article(article_data)
+                            if processed:
+                                articles.append(processed)
+                logger.info(f"Fetched and processed {len(articles)} articles from NewsData.io")
+                return articles
+            except Exception as e:
+                logger.error(f"Error fetching news from NewsData.io: {e}")
+                return []
+        
+        logger.error("Unknown news API type; ensure NEWSAPI_KEY is set correctly")
+        return []
+
+    async def fetch_top_headlines(
+        self,
+        category: str = "business",
+        country: str = "us",
+        page_size: int = 20
+    ) -> List[NewsArticle]:
+        """Fetch top headlines from the news provider"""
+        if not self.client and self.api_type != "newsdata":
+            logger.error("News API client not initialized - missing NEWSAPI_KEY")
+            return []
+        try:
+            articles: List[NewsArticle] = []
+            if self.api_type == "newsapi" and self.client:
+                resp = self.client.get_top_headlines(category=category, country=country, page_size=page_size)
+                if resp.get('status') != 'ok':
+                    logger.error(f"News API error: {resp.get('message', 'Unknown error')}")
+                    return []
+                for article_data in resp.get('articles', []):
+                    processed = await self._process_article(article_data)
+                    if processed:
+                        articles.append(processed)
+                return articles
+            elif self.api_type == "newsdata":
+                # Minimal NewsData.io headlines via HTTP (category/country mapped best-effort)
+                import aiohttp
+                url = "https://newsdata.io/api/1/news"
+                params = {
+                    "apikey": self.api_key,
+                    "category": category,
+                    "country": country,
+                    "language": "en",
+                    "page": 1
+                }
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, params=params) as r:
+                        data = await r.json()
+                        for a in data.get('results', [])[:page_size]:
+                            article_data = {
+                                'title': a.get('title'),
+                                'description': a.get('description'),
+                                'content': a.get('content') or a.get('description') or '',
+                                'url': a.get('link'),
+                                'source': {'name': (a.get('source_id') or 'NewsData.io')},
+                                'author': a.get('creator', ['Unknown'])[0] if a.get('creator') else 'Unknown',
+                                'publishedAt': a.get('pubDate')
+                            }
+                            processed = await self._process_article(article_data)
+                            if processed:
+                                articles.append(processed)
+                return articles
+            else:
+                return []
         except Exception as e:
-            logger.error(f"Error fetching news from API: {e}")
-            # Don't return mock data - return empty list so user knows API failed
-            logger.warning("News API failed - returning empty list instead of fake data")
+            logger.error(f"Error fetching top headlines: {e}")
             return []
     
     async def _process_article(self, article_data: Dict) -> Optional[NewsArticle]:
@@ -311,58 +397,7 @@ Return ONLY the JSON, no other text."""
                 logger.error(f"Error in news streaming: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute on error
     
-    async def _generate_mock_news(self) -> List[NewsArticle]:
-        """Generate mock news data for testing"""
-        mock_articles = [
-            NewsArticle(
-                id=f"mock_{int(time.time())}_1",
-                title="SEC Announces New Cryptocurrency Enforcement Guidelines",
-                description="The Securities and Exchange Commission has released comprehensive guidelines for cryptocurrency enforcement actions.",
-                content="The SEC today announced new enforcement guidelines that will impact how cryptocurrency exchanges operate in the United States...",
-                url="https://example.com/sec-crypto-guidelines",
-                source="SEC.gov",
-                author="SEC Press Office",
-                published_at=datetime.now().isoformat(),
-                category="regulatory",
-                sentiment="neutral",
-                relevance_score=0.95,
-                keywords=["SEC", "cryptocurrency", "enforcement", "guidelines"],
-                entities=["SEC", "cryptocurrency exchanges"]
-            ),
-            NewsArticle(
-                id=f"mock_{int(time.time())}_2",
-                title="Major DeFi Protocol Implements Enhanced Compliance Measures",
-                description="Leading decentralized finance protocol announces new AML and KYC compliance features.",
-                content="In response to regulatory pressure, the DeFi protocol has implemented comprehensive compliance measures...",
-                url="https://example.com/defi-compliance",
-                source="CryptoNews",
-                author="Jane Smith",
-                published_at=(datetime.now() - timedelta(hours=2)).isoformat(),
-                category="compliance",
-                sentiment="positive",
-                relevance_score=0.88,
-                keywords=["DeFi", "compliance", "AML", "KYC"],
-                entities=["DeFi protocol", "regulatory authorities"]
-            ),
-            NewsArticle(
-                id=f"mock_{int(time.time())}_3",
-                title="CFTC Issues Warning on Unregistered Crypto Derivatives",
-                description="Commodity Futures Trading Commission warns against trading unregistered cryptocurrency derivatives.",
-                content="The CFTC has issued a public warning regarding the risks of trading unregistered cryptocurrency derivatives...",
-                url="https://example.com/cftc-warning",
-                source="CFTC.gov",
-                author="CFTC Communications",
-                published_at=(datetime.now() - timedelta(hours=4)).isoformat(),
-                category="enforcement",
-                sentiment="negative",
-                relevance_score=0.92,
-                keywords=["CFTC", "derivatives", "warning", "unregistered"],
-                entities=["CFTC", "cryptocurrency derivatives"]
-            )
-        ]
-        
-        logger.info(f"Generated {len(mock_articles)} mock articles")
-        return mock_articles
+    
     
     async def get_regulatory_sources_news(self) -> List[NewsArticle]:
         """Fetch news specifically from regulatory sources"""

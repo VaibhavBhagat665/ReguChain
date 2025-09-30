@@ -8,17 +8,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - NEWSAPI_KEY=${NEWSAPI_KEY}
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
       - DATABASE_URL=sqlite:///app/data/reguchain.db
       - FAISS_INDEX_PATH=/app/faiss_index/index
-      - EMBEDDINGS_PROVIDER=google
-      - EMBEDDINGS_MODEL=models/embedding-001
-      - EMBEDDINGS_DIMENSION=768
-      - LLM_PROVIDER=google
-      - LLM_MODEL=gemini-pro
+      - EMBEDDINGS_PROVIDER=huggingface
+      - EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - EMBEDDINGS_DIMENSION=384
+      - LLM_PROVIDER=groq
+      - LLM_MODEL=llama-3.1-8b-instant
       - LLM_TEMPERATURE=0.3
+      - PATHWAY_KEY=${PATHWAY_KEY}
       - RISK_SCORE_THRESHOLD=50
       - TRANSACTION_THRESHOLD=10000
     volumes:
@@ -27,7 +28,7 @@ services:
     networks:
       - reguchain-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/realtime/health"]
       interval: 30s
       timeout: 10s
       retries: 3

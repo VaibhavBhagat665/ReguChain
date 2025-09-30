@@ -17,9 +17,8 @@ from .config import (
 )
 from .database import save_document, save_transaction
 from .vector_store import vector_store
-from .news_service import news_service
 from .langchain_agent import langchain_agent
-from .pathway_service import pathway_service, mock_generator
+from .realtime_news_service import realtime_news_service
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +80,8 @@ class DataIngester:
                 logger.info(f"Ingested {len(documents)} OFAC entries")
         except Exception as e:
             logger.error(f"Error ingesting OFAC data: {e}")
-            # Add sample data for demo
-            documents = [
-                {
-                    "source": "OFAC",
-                    "text": "OFAC Sanction: Demo Sanctioned Entity - Address: 0xDEMO123 - Program: Cyber Sanctions",
-                    "link": OFAC_SDN_URL,
-                    "metadata": {"type": "sanction", "demo": True}
-                }
-            ]
+            # Return empty list on error; do not inject mock data
+            documents = []
         
         return documents
     
@@ -127,119 +119,74 @@ class DataIngester:
                 logger.info(f"Ingested {len(documents)} items from {source} RSS")
         except Exception as e:
             logger.error(f"Error ingesting RSS from {source}: {e}")
-            # Add sample data for demo
-            documents = [
-                {
-                    "source": source,
-                    "text": f"{source} Alert: New regulatory action against crypto exchange for AML violations",
-                    "link": url,
-                    "metadata": {"type": "regulatory_news", "demo": True}
-                }
-            ]
+            # Return empty list on error; do not inject mock data
+            documents = []
         
         return documents
     
     async def ingest_newsapi(self) -> List[Dict]:
-        """Ingest news from NewsData.io and RSS feeds using news service"""
-        documents = []
-        
+        """Ingest news from NewsAPI.org or NewsData.io using realtime_news_service (real only)"""
+        documents: List[Dict] = []
         try:
-            # Get regulatory updates from news service
-            articles = await news_service.get_regulatory_updates(hours=24)
-            
-            if not articles:
-                # Try searching for specific topics
-                articles = await news_service.search_news("cryptocurrency regulation SEC CFTC")
-            
-            # Convert articles to documents
-            for article in articles[:50]:  # Limit to 50 articles
-                text = f"{article['title']}\n{article['description']}\n{article.get('content', '')}"
-                
-                doc = {
-                    "source": article.get("source", "NewsAPI"),
-                    "text": text[:2000],  # Limit text length
-                    "link": article.get("url", ""),
+            async with realtime_news_service:
+                articles = await realtime_news_service.fetch_realtime_news(
+                    query="cryptocurrency OR blockchain OR SEC OR CFTC OR regulatory OR compliance",
+                    page_size=50
+                )
+            for article in articles:
+                text = f"{article.title}\n{article.description}\n{article.content or ''}"
+                documents.append({
+                    "source": article.source,
+                    "text": text[:2000],
+                    "link": article.url,
                     "metadata": {
-                        "title": article.get("title", ""),
-                        "published": article.get("published_at", ""),
+                        "title": article.title,
+                        "published": article.published_at,
                         "type": "news",
-                        "keywords": article.get("keywords", []),
-                        "sentiment": article.get("sentiment", "neutral"),
-                        "api_source": article.get("api_source", "unknown")
+                        "keywords": article.keywords,
+                        "sentiment": article.sentiment,
+                        "api_source": getattr(realtime_news_service, 'api_type', 'unknown')
                     }
-                }
-                documents.append(doc)
-            
-            # Analyze sentiment of all articles
-            if articles:
-                sentiment_analysis = await news_service.analyze_sentiment(articles)
-                logger.info(f"News sentiment: {sentiment_analysis}")
-            
-            logger.info(f"Ingested {len(documents)} news articles from news service")
-            
+                })
+            logger.info(f"Ingested {len(documents)} news articles from realtime_news_service")
         except Exception as e:
             logger.error(f"Error ingesting news data: {e}")
-            # Return some demo data on error
-            documents = [
-                {
-                    "source": "Demo",
-                    "text": "SEC Announces New Cryptocurrency Compliance Framework - The Securities and Exchange Commission today unveiled comprehensive guidelines for digital asset compliance.",
-                    "link": "https://example.com/sec-news",
-                    "metadata": {"type": "news", "demo": True}
-                },
-                {
-                    "source": "Demo", 
-                    "text": "CFTC Issues Warning on DeFi platforms - Commodity Futures Trading Commission warns investors about risks in decentralized finance protocols.",
-                    "link": "https://example.com/cftc-news",
-                    "metadata": {"type": "news", "demo": True}
-                }
-            ]
-        
         return documents
     
     async def ingest_blockchain(self, addresses: List[str] = None) -> List[Dict]:
-        """Ingest blockchain transaction data"""
-        documents = []
-        
-        # Default demo addresses
-        if not addresses:
-            addresses = ["0xDEMO0001", "0xDEMO0002"]
-        
+        """Ingest blockchain transaction data from real APIs only"""
+        documents: List[Dict] = []
         try:
-            # For demo, create sample transactions
+            # Require explicit addresses; do not use demo addresses
+            if not addresses:
+                return documents
+            from .blockchain_service import blockchain_service
             for address in addresses:
-                # Simulate transactions
-                tx_data = {
-                    "tx_hash": f"0x{'a' * 64}",
-                    "from": address,
-                    "to": "0x" + "b" * 40,
-                    "amount": 15000.0,  # Above threshold for demo
-                    "timestamp": datetime.utcnow()
-                }
-                
-                # Save to database
-                save_transaction(
-                    tx_data["tx_hash"],
-                    tx_data["from"],
-                    tx_data["to"],
-                    tx_data["amount"],
-                    tx_data["timestamp"]
-                )
-                
-                # Create document
-                text = f"Transaction from {tx_data['from']} to {tx_data['to']} for {tx_data['amount']} ETH"
-                doc = {
-                    "source": "Blockchain",
-                    "text": text,
-                    "link": f"https://etherscan.io/tx/{tx_data['tx_hash']}",
-                    "metadata": tx_data
-                }
-                documents.append(doc)
-            
-            logger.info(f"Ingested {len(documents)} blockchain transactions")
+                txs = await blockchain_service.get_transactions(address, limit=20)
+                for tx in txs:
+                    save_transaction(
+                        tx.hash,
+                        tx.from_address,
+                        tx.to_address,
+                        float(tx.value),
+                        tx.timestamp
+                    )
+                    documents.append({
+                        "source": "Blockchain",
+                        "text": f"Transaction {tx.hash} from {tx.from_address} to {tx.to_address} for {tx.value} ETH",
+                        "link": f"https://etherscan.io/tx/{tx.hash}",
+                        "metadata": {
+                            "tx_hash": tx.hash,
+                            "from": tx.from_address,
+                            "to": tx.to_address,
+                            "amount": float(tx.value),
+                            "timestamp": tx.timestamp,
+                            "block_number": tx.block_number
+                        }
+                    })
+            logger.info(f"Ingested {len(documents)} blockchain transactions from real APIs")
         except Exception as e:
             logger.error(f"Error ingesting blockchain data: {e}")
-        
         return documents
     
     async def ingest_all(self) -> Dict:
@@ -296,62 +243,7 @@ class DataIngester:
             "timestamp": datetime.utcnow().isoformat()
         }
     
-    async def simulate_ingestion(self, target: str = None) -> Dict:
-        """Simulate ingestion of a new sanction/news entry"""
-        if not target:
-            target = "0xDEMO" + "".join([str(i) for i in range(10)])
-        
-        # Create simulated documents
-        simulated_docs = [
-            {
-                "source": "OFAC",
-                "text": f"URGENT: New OFAC sanction added for wallet {target} - Linked to ransomware operations",
-                "link": "https://www.treasury.gov/ofac/sanctions",
-                "metadata": {
-                    "type": "sanction",
-                    "severity": "critical",
-                    "wallet": target,
-                    "simulated": True
-                }
-            },
-            {
-                "source": "NewsAPI",
-                "text": f"Breaking News: Wallet {target} identified in major DeFi hack, $10M stolen",
-                "link": "https://example.com/breaking-news",
-                "metadata": {
-                    "type": "news",
-                    "severity": "high",
-                    "wallet": target,
-                    "simulated": True
-                }
-            }
-        ]
-        
-        # Add to vector store
-        texts = [doc["text"] for doc in simulated_docs]
-        ids = vector_store.add_documents(texts, simulated_docs)
-        
-        # Save to database
-        saved_docs = []
-        for doc, embedding_id in zip(simulated_docs, ids):
-            saved = save_document(
-                source=doc["source"],
-                text=doc["text"],
-                link=doc.get("link", ""),
-                metadata=doc.get("metadata", {}),
-                embedding_id=embedding_id
-            )
-            saved_docs.append(saved.to_dict())
-        
-        logger.info(f"Simulated ingestion for target: {target}")
-        
-        return {
-            "target": target,
-            "documents_added": len(saved_docs),
-            "documents": saved_docs,
-            "timestamp": datetime.utcnow().isoformat(),
-            "message": f"Successfully simulated sanctions for {target}"
-        }
+    # Removed simulate_ingestion to enforce real-data only
 
 # Global ingester instance
 ingester = DataIngester()

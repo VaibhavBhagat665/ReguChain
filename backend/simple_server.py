@@ -25,8 +25,8 @@ def test_endpoint():
         "status": "ok",
         "message": "Test endpoint working",
         "apis": {
-            "google_gemini": "configured",
-            "newsdata": "configured",
+            "groq": "configured",
+            "newsapi": "configured",
             "pathway": "configured"
         }
     }

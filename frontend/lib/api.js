@@ -15,12 +15,15 @@ const api = axios.create({
 });
 
 // API functions
-export const queryAPI = async (question, target = null) => {
+export const queryAPI = async (question, target = null, conversationId = null) => {
   try {
-    const response = await api.post('/api/query', {
-      question,
-      target,
-    });
+    const payload = {
+      message: question,
+    };
+    if (conversationId) payload.conversation_id = conversationId;
+    if (target) payload.wallet_address = target;
+
+    const response = await api.post('/api/agent/chat', payload);
     return response.data;
   } catch (error) {
     console.error('Query API error:', error);
@@ -38,21 +41,11 @@ export const getStatus = async () => {
   }
 };
 
-export const simulateIngestion = async (target = null) => {
-  try {
-    const response = await api.post('/api/ingest/simulate', {
-      target,
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Simulate API error:', error);
-    throw error;
-  }
-};
+// simulateIngestion removed: system uses real data only
 
 export const checkHealth = async () => {
   try {
-    const response = await api.get('/health');
+    const response = await api.get('/api/realtime/health');
     return response.data;
   } catch (error) {
     console.error('Health check error:', error);
@@ -67,5 +60,91 @@ export const refreshData = async () => {
   } catch (error) {
     console.error('Refresh API error:', error);
     throw error;
+  }
+};
+
+// Realtime controls
+export const startRealtime = async () => {
+  try {
+    const res = await api.post('/api/realtime/start');
+    return res.data;
+  } catch (e) {
+    console.error('Start realtime error:', e);
+    throw e;
+  }
+};
+
+export const stopRealtime = async () => {
+  try {
+    const res = await api.post('/api/realtime/stop');
+    return res.data;
+  } catch (e) {
+    console.error('Stop realtime error:', e);
+    throw e;
+  }
+};
+
+// Wallet realtime helpers
+export const connectWalletRealtime = async (walletAddress) => {
+  try {
+    const res = await api.post('/api/realtime/wallet/connect', null, {
+      params: { wallet_address: walletAddress },
+    });
+    return res.data;
+  } catch (e) {
+    console.error('Connect wallet realtime error:', e);
+    throw e;
+  }
+};
+
+export const getWalletRealtimeStatus = async (walletAddress) => {
+  try {
+    const res = await api.get(`/api/realtime/wallet/${walletAddress}/status`);
+    return res.data;
+  } catch (e) {
+    console.error('Get wallet realtime status error:', e);
+    throw e;
+  }
+};
+
+export const getWalletCompliance = async (walletAddress) => {
+  try {
+    const res = await api.get(`/api/realtime/wallet/${walletAddress}/compliance`);
+    return res.data;
+  } catch (e) {
+    console.error('Get wallet compliance error:', e);
+    throw e;
+  }
+};
+
+export const getWalletReport = async (walletAddress) => {
+  try {
+    const res = await api.get(`/api/realtime/wallet/${walletAddress}/report`);
+    return res.data;
+  } catch (e) {
+    console.error('Get wallet report error:', e);
+    throw e;
+  }
+};
+
+export const listTrackedWallets = async () => {
+  try {
+    const res = await api.get('/api/realtime/wallet/tracked');
+    return res.data;
+  } catch (e) {
+    console.error('List tracked wallets error:', e);
+    throw e;
+  }
+};
+
+export const getStreamRecords = async (streamName, { limit = 10, walletAddress = null } = {}) => {
+  try {
+    const params = { limit };
+    if (walletAddress) params.wallet_address = walletAddress;
+    const res = await api.get(`/api/realtime/streams/${streamName}`, { params });
+    return res.data;
+  } catch (e) {
+    console.error('Get stream records error:', e);
+    throw e;
   }
 };
