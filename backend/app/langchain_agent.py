@@ -13,12 +13,15 @@ from langchain.chains import RetrievalQA, LLMChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain.callbacks import StreamingStdOutCallbackHandler
 from langchain.schema import Document
 
-from .config import GOOGLE_API_KEY, LLM_MODEL, LLM_TEMPERATURE, FAISS_INDEX_PATH
-from .news_service import news_service
+from .config import (
+    GOOGLE_API_KEY, GROQ_API_KEY, LLM_MODEL, LLM_TEMPERATURE, 
+    LLM_PROVIDER, FAISS_INDEX_PATH, DISABLE_EMBEDDINGS, DISABLE_VECTOR_STORE
+)
+from .realtime_news_service import realtime_news_service
+from .groq_langchain import SimpleGroqAgent, create_groq_langchain_agent
 from .risk import risk_engine
 from .blockchain_service import blockchain_service
 
@@ -47,17 +50,31 @@ class LangChainAgent:
         self._initialize_agent()
     
     def _initialize_llm(self):
-        """Initialize Google Gemini LLM"""
+        """Initialize LLM - Groq if available, otherwise Google Gemini"""
         try:
-            self.llm = GoogleGenerativeAI(
-                model=LLM_MODEL,
-                google_api_key=GOOGLE_API_KEY,
-                temperature=LLM_TEMPERATURE,
-                max_output_tokens=2048,
-                streaming=True,
-                callbacks=[StreamingStdOutCallbackHandler()]
-            )
-            logger.info("Google Gemini LLM initialized successfully")
+            if LLM_PROVIDER == 'groq' and GROQ_API_KEY:
+                # Use Groq instead of Gemini
+                self.llm = create_groq_langchain_agent(GROQ_API_KEY, LLM_MODEL)
+                logger.info(f"Groq LLM initialized successfully with model: {LLM_MODEL}")
+            elif GOOGLE_API_KEY:
+                # Fallback to Gemini
+                try:
+                    from langchain_google_genai import GoogleGenerativeAI
+                    self.llm = GoogleGenerativeAI(
+                        model=LLM_MODEL,
+                        google_api_key=GOOGLE_API_KEY,
+                        temperature=LLM_TEMPERATURE,
+                        max_output_tokens=2048
+                    )
+                    logger.info("Google Gemini LLM initialized successfully")
+                except Exception as e:
+                    logger.error(f"Gemini initialization failed: {e}")
+                    # Use simple Groq agent as fallback
+                    if GROQ_API_KEY:
+                        self.simple_groq = SimpleGroqAgent(GROQ_API_KEY, LLM_MODEL)
+                        logger.info("Using simple Groq agent as fallback")
+            else:
+                logger.warning("No LLM API keys available")
         except Exception as e:
             logger.error(f"Error initializing LLM: {e}")
             # Fallback to a simple mock LLM for testing
@@ -65,8 +82,14 @@ class LangChainAgent:
     
     def _initialize_embeddings(self):
         """Initialize embeddings model"""
+        if DISABLE_EMBEDDINGS:
+            logger.info("Embeddings disabled - skipping initialization")
+            self.embeddings = None
+            return
+            
         try:
-            # Try Google embeddings first
+            # Try Google embeddings first if not disabled
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
             self.embeddings = GoogleGenerativeAIEmbeddings(
                 model="models/embedding-001",
                 google_api_key=GOOGLE_API_KEY
@@ -326,6 +349,11 @@ Current question: {input}
     def query(self, question: str, context: Optional[Dict] = None) -> Dict:
         """Query the agent with a question"""
         try:
+            # If we have a simple Groq agent (fallback), use it
+            if hasattr(self, 'simple_groq') and self.simple_groq:
+                return self.simple_groq.query(question, context)
+            
+            # Otherwise use the full LangChain agent if available
             if self.agent_executor:
                 # Add context to the question if provided
                 if context:

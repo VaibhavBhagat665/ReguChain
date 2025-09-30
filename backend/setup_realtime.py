@@ -12,20 +12,19 @@ sys.path.insert(0, str(Path(__file__).parent / "app"))
 async def setup_realtime_system():
     """Setup the real-time system with proper configuration"""
     
-    print("🚀 Setting up ReguChain Real-time System")
     print("=" * 50)
     
     # Check environment variables
     print("\n📋 Checking Environment Configuration...")
     
-    required_vars = {
-        'GOOGLE_API_KEY': 'Gemini API for AI analysis',
+    required_env_vars = {
+        'GROQ_API_KEY': 'Groq API for AI analysis',
         'NEWSAPI_KEY': 'News API for real-time news',
         'PATHWAY_KEY': 'Pathway license for streaming (optional)'
     }
     
     missing_vars = []
-    for var, description in required_vars.items():
+    for var, description in required_env_vars.items():
         value = os.getenv(var)
         if value:
             print(f"✅ {var}: Configured ({description})")
@@ -38,11 +37,11 @@ async def setup_realtime_system():
         print("\nTo set up environment variables:")
         print("1. Create a .env file in the project root")
         print("2. Add the following variables:")
-        print("   GOOGLE_API_KEY=your_gemini_api_key")
+        print("   GROQ_API_KEY=your_groq_api_key")
         print("   NEWSAPI_KEY=your_news_api_key")
         print("   PATHWAY_KEY=your_pathway_license_key (optional)")
         print("\nGet your API keys from:")
-        print("- Gemini API: https://aistudio.google.com/app/apikey")
+        print("- Groq API: https://console.groq.com/keys")
         print("- News API: https://newsapi.org/register")
         print("- Pathway: https://pathway.com/developers (free license)")
     
@@ -51,7 +50,7 @@ async def setup_realtime_system():
     
     dependencies = {
         'pathway': 'Real-time streaming framework',
-        'google.generativeai': 'Gemini AI integration',
+        'groq': 'Groq AI integration',
         'newsapi': 'News API client',
         'fastapi': 'Web framework',
         'pandas': 'Data processing',
@@ -221,7 +220,7 @@ if __name__ == "__main__":
 '''
     
     startup_file = Path(__file__).parent / "start_realtime.py"
-    with open(startup_file, 'w') as f:
+    with open(startup_file, 'w', encoding='utf-8') as f:
         f.write(startup_content)
     
     print(f"✅ Startup script created: {startup_file}")

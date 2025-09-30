@@ -12,7 +12,7 @@ import requests
 from dataclasses import dataclass, asdict
 from newsapi import NewsApiClient
 
-from .config import NEWSAPI_KEY, GOOGLE_API_KEY
+from .config import NEWSAPI_KEY, GROQ_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -41,30 +41,50 @@ class RealTimeNewsService:
     
     def __init__(self):
         self.api_key = NEWSAPI_KEY
-        self.gemini_api_key = GOOGLE_API_KEY
         self.client = None
         self.session = None
         
-        # Initialize News API client if key is available
-        if self.api_key:
+        # Initialize News API client - Support both NewsAPI.org and NewsData.io
+        if NEWSAPI_KEY:
             try:
-                self.client = NewsApiClient(api_key=self.api_key)
-                logger.info("News API client initialized successfully")
+                if NEWSAPI_KEY.startswith("pub_"):
+                    # NewsData.io API key
+                    self.api_type = "newsdata"
+                    self.api_key = NEWSAPI_KEY
+                    self.client = None  # Use direct HTTP requests for NewsData.io
+                    logger.info("NewsData.io API key detected - using direct HTTP client")
+                else:
+                    # NewsAPI.org key
+                    from newsapi import NewsApiClient
+                    self.api_type = "newsapi"
+                    self.client = NewsApiClient(api_key=NEWSAPI_KEY)
+                    logger.info("NewsAPI.org client initialized successfully")
+            except ImportError:
+                logger.error("newsapi-python not installed. Install with: pip install newsapi-python")
+                self.client = None
+                self.api_type = "none"
             except Exception as e:
-                logger.error(f"Failed to initialize News API client: {e}")
-        
-        # Initialize Gemini for analysis
-        if self.gemini_api_key:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=self.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-                logger.info("Gemini API initialized for news analysis")
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini API: {e}")
-                self.gemini_model = None
+                logger.error(f"Error initializing News API client: {e}")
+                self.client = None
+                self.api_type = "none"
         else:
-            self.gemini_model = None
+            logger.warning("No News API key provided")
+            self.client = None
+            self.api_type = "none"
+        
+        # Initialize Groq for analysis
+        self.groq_api_key = GROQ_API_KEY
+        if self.groq_api_key:
+            try:
+                from groq import Groq
+                self.groq_client = Groq(api_key=self.groq_api_key)
+                logger.info("Groq API initialized for news analysis")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq API: {e}")
+                self.groq_client = None
+        else:
+            logger.warning("No Groq API key provided")
+            self.groq_client = None
     
     async def __aenter__(self):
         """Async context manager entry"""
@@ -118,41 +138,8 @@ class RealTimeNewsService:
             
         except Exception as e:
             logger.error(f"Error fetching news from API: {e}")
-            return await self._generate_mock_news()
-    
-    async def fetch_top_headlines(self,
-                                 category: str = "business",
-                                 country: str = "us",
-                                 page_size: int = 50) -> List[NewsArticle]:
-        """Fetch top headlines from News API"""
-        if not self.client:
-            return await self._generate_mock_news()
-        
-        try:
-            headlines_response = self.client.get_top_headlines(
-                category=category,
-                country=country,
-                page_size=page_size
-            )
-            
-            if headlines_response['status'] != 'ok':
-                logger.error(f"News API error: {headlines_response.get('message', 'Unknown error')}")
-                return []
-            
-            articles = []
-            for article_data in headlines_response['articles']:
-                try:
-                    processed_article = await self._process_article(article_data)
-                    if processed_article:
-                        articles.append(processed_article)
-                except Exception as e:
-                    logger.error(f"Error processing headline: {e}")
-                    continue
-            
-            return articles
-            
-        except Exception as e:
-            logger.error(f"Error fetching headlines: {e}")
+            # Don't return mock data - return empty list so user knows API failed
+            logger.warning("News API failed - returning empty list instead of fake data")
             return []
     
     async def _process_article(self, article_data: Dict) -> Optional[NewsArticle]:
@@ -175,7 +162,7 @@ class RealTimeNewsService:
             article_id = f"news_{hash(url)}_{int(time.time())}"
             
             # AI-powered analysis
-            analysis = await self._analyze_with_gemini(title, description, content)
+            analysis = await self._analyze_with_groq(title, description, content)
             
             return NewsArticle(
                 id=article_id,
@@ -197,47 +184,54 @@ class RealTimeNewsService:
             logger.error(f"Error processing article: {e}")
             return None
     
-    async def _analyze_with_gemini(self, title: str, description: str, content: str) -> Dict:
-        """Analyze article content using Gemini AI"""
-        if not self.gemini_model:
+    async def _analyze_with_groq(self, title: str, description: str, content: str) -> Dict:
+        """Analyze article content using Groq AI"""
+        if not self.groq_client:
             return self._basic_analysis(title, description, content)
         
         try:
-            # Prepare analysis prompt
-            text_to_analyze = f"Title: {title}\nDescription: {description}\nContent: {content[:1000]}"
+            # Create analysis prompt
+            prompt = f"""Analyze this news article and return ONLY a JSON response with this exact structure:
+{{
+    "category": "regulatory|compliance|defi|blockchain|general",
+    "sentiment": "positive|negative|neutral", 
+    "relevance_score": 0.0-1.0,
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "entities": ["entity1", "entity2"]
+}}
+
+Article Title: {title}
+Article Description: {description}
+Article Content: {content[:500]}...
+
+Focus on cryptocurrency, blockchain, DeFi, regulatory compliance, and financial technology topics.
+Return ONLY the JSON, no other text."""
             
-            prompt = f"""
-            Analyze this news article for regulatory and compliance relevance:
-            
-            {text_to_analyze}
-            
-            Provide analysis in JSON format:
-            {{
-                "category": "regulatory|compliance|enforcement|guidance|technology|general",
-                "sentiment": "positive|negative|neutral",
-                "relevance_score": 0.0-1.0,
-                "keywords": ["keyword1", "keyword2", ...],
-                "entities": ["entity1", "entity2", ...],
-                "regulatory_impact": "high|medium|low|none",
-                "affected_sectors": ["sector1", "sector2", ...],
-                "urgency": "critical|high|medium|low"
-            }}
-            
-            Focus on cryptocurrency, blockchain, DeFi, regulatory compliance, and financial technology topics.
-            """
-            
-            response = self.gemini_model.generate_content(prompt)
+            response = self.groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a financial news analyst. Return only valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                model="llama-3.1-8b-instant",
+                temperature=0.1,
+                max_tokens=500
+            )
             
             # Parse JSON response
             try:
-                analysis = json.loads(response.text.strip())
+                analysis_text = response.choices[0].message.content.strip()
+                # Remove any markdown formatting
+                if analysis_text.startswith("```json"):
+                    analysis_text = analysis_text.replace("```json", "").replace("```", "").strip()
+                
+                analysis = json.loads(analysis_text)
                 return analysis
             except json.JSONDecodeError:
-                logger.warning("Failed to parse Gemini JSON response, using basic analysis")
+                logger.warning("Failed to parse Groq JSON response, using basic analysis")
                 return self._basic_analysis(title, description, content)
                 
         except Exception as e:
-            logger.error(f"Error in Gemini analysis: {e}")
+            logger.error(f"Error in Groq analysis: {e}")
             return self._basic_analysis(title, description, content)
     
     def _basic_analysis(self, title: str, description: str, content: str) -> Dict:

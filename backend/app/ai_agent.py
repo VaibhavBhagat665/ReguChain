@@ -19,7 +19,7 @@ from .database import get_recent_documents, get_transactions_for_address
 from .vector_store import vector_store
 from .risk import risk_engine
 from .blockchain_service import blockchain_service
-from .news_service import news_service
+from .realtime_news_service import realtime_news_service
 from .langchain_agent import langchain_agent
 
 # Configure logging
@@ -175,7 +175,13 @@ class ReguChainAIAgent:
         if any(keyword in message_lower for keyword in ["risk", "safe", "dangerous", "threat", "security"]):
             capabilities_needed.append("risk_assessment")
         
-        # Always include conversational AI
+        # News and regulatory updates intent
+        if any(keyword in message_lower for keyword in ["news", "update", "recent", "latest", "current", "today"]):
+            capabilities_needed.append("regulatory_updates")
+            capabilities_needed.append("compliance_check")
+        
+        # Always include compliance check to get real news data
+        capabilities_needed.append("compliance_check")
         capabilities_needed.append("conversational_ai")
         
         # Determine primary intent
@@ -278,10 +284,9 @@ class ReguChainAIAgent:
         
         # If no response generated yet, use Gemini or fallback
         if not response_data["message"]:
-            # Perform compliance check if needed
-            compliance_data = None
-            if "compliance_check" in capabilities_needed:
-                compliance_data = await self._perform_compliance_check(message, wallet_address)
+            # Always perform compliance check to get real news data
+            compliance_data = await self._perform_compliance_check(message, wallet_address)
+            response_data["compliance_data"] = compliance_data
             
             # Generate AI response using Gemini
             if genai and GOOGLE_API_KEY:
@@ -369,11 +374,14 @@ class ReguChainAIAgent:
             }
     
     async def _perform_compliance_check(self, query: str, wallet_address: Optional[str] = None) -> Dict[str, Any]:
-        """Perform compliance check using RAG system"""
+        """Perform compliance check using RAG system and real news data"""
         try:
             # Search vector store for relevant compliance information
             search_results = vector_store.search(query, k=5)
             retrieved_docs = [doc for doc, score in search_results]
+            
+            # Get real-time news data
+            news_data = await self._get_real_news_context(query)
             
             compliance_data = {
                 "query": query,
@@ -382,7 +390,8 @@ class ReguChainAIAgent:
                 "last_updated": datetime.utcnow().isoformat(),
                 "evidence_snippets": [
                     doc.get("text", "")[:200] + "..." for doc in retrieved_docs[:3]
-                ]
+                ],
+                "recent_news": news_data
             }
             
             if wallet_address:
@@ -393,6 +402,39 @@ class ReguChainAIAgent:
         except Exception as e:
             logger.error(f"Error in compliance check: {e}")
             return {"error": "Compliance check temporarily unavailable"}
+    
+    async def _get_real_news_context(self, query: str) -> Dict[str, Any]:
+        """Get real-time news context for compliance analysis"""
+        try:
+            async with realtime_news_service:
+                # Fetch real news articles
+                articles = await realtime_news_service.fetch_realtime_news(
+                    query=f"{query} OR regulatory OR compliance OR SEC OR CFTC",
+                    page_size=5
+                )
+                
+                if articles:
+                    news_context = {
+                        "total_articles": len(articles),
+                        "recent_headlines": [article.title for article in articles[:3]],
+                        "sources": list(set([article.source for article in articles])),
+                        "categories": list(set([article.category for article in articles])),
+                        "avg_relevance": sum(article.relevance_score for article in articles) / len(articles),
+                        "sentiment_distribution": {
+                            "positive": len([a for a in articles if a.sentiment == "positive"]),
+                            "negative": len([a for a in articles if a.sentiment == "negative"]),
+                            "neutral": len([a for a in articles if a.sentiment == "neutral"])
+                        },
+                        "latest_update": articles[0].published_at if articles else None,
+                        "data_source": "real_news_api"
+                    }
+                    return news_context
+                else:
+                    return {"message": "No recent news found", "data_source": "real_news_api"}
+                    
+        except Exception as e:
+            logger.error(f"Error fetching real news: {e}")
+            return {"error": "News service temporarily unavailable", "data_source": "error"}
     
     async def _generate_gemini_response(
         self, 
@@ -405,10 +447,25 @@ class ReguChainAIAgent:
     ) -> Dict[str, Any]:
         """Generate response using Google Gemini"""
         
-        # Build comprehensive prompt
+        # Build comprehensive prompt with real news data
+        news_context = ""
+        if compliance_data and compliance_data.get("recent_news"):
+            news_data = compliance_data["recent_news"]
+            if news_data.get("data_source") == "real_news_api":
+                news_context = f"""
+REAL-TIME NEWS CONTEXT:
+- Recent articles found: {news_data.get('total_articles', 0)}
+- Latest headlines: {', '.join(news_data.get('recent_headlines', []))}
+- News sources: {', '.join(news_data.get('sources', []))}
+- Categories: {', '.join(news_data.get('categories', []))}
+- Average relevance: {news_data.get('avg_relevance', 0):.2f}
+- Sentiment: {news_data.get('sentiment_distribution', {})}
+- Latest update: {news_data.get('latest_update', 'Unknown')}
+"""
+
         prompt = f"""
 You are ReguChain AI, an advanced AI agent specializing in blockchain regulatory compliance and risk analysis. 
-You have access to real-time regulatory data, blockchain analytics, and compliance databases.
+You have access to REAL-TIME regulatory data, blockchain analytics, compliance databases, and live news feeds.
 
 CONVERSATION CONTEXT:
 {conversation_history}
@@ -423,21 +480,26 @@ BLOCKCHAIN ANALYSIS DATA:
 COMPLIANCE DATA:
 {json.dumps(compliance_data, indent=2) if compliance_data else "No compliance data available"}
 
+{news_context}
+
 INTENT: {intent}
 
 INSTRUCTIONS:
-1. Provide a helpful, accurate, and conversational response
-2. Use the blockchain and compliance data to support your analysis
-3. Be specific about risk factors and recommendations
-4. Maintain conversation context and refer to previous messages when relevant
-5. Suggest 2-3 actionable next steps
-6. Ask 1-2 relevant follow-up questions to continue the conversation
-7. Express appropriate confidence level in your analysis
-8. Use a professional but approachable tone
+1. Provide a helpful, accurate, and conversational response using REAL data
+2. Reference the actual news headlines and regulatory updates when relevant
+3. Use the blockchain and compliance data to support your analysis
+4. Be specific about risk factors and recommendations based on current events
+5. Maintain conversation context and refer to previous messages when relevant
+6. Suggest 2-3 actionable next steps based on real regulatory developments
+7. Ask 1-2 relevant follow-up questions to continue the conversation
+8. Express appropriate confidence level in your analysis
+9. Use a professional but approachable tone
+10. When mentioning news, reference actual headlines and sources provided
 
 RESPONSE FORMAT:
-Provide a natural conversational response that incorporates the available data.
+Provide a natural conversational response that incorporates the real-time data available.
 Focus on being helpful and informative while maintaining accuracy.
+Always indicate when you're using real-time data vs. historical information.
 """
         
         try:
@@ -488,13 +550,16 @@ Focus on being helpful and informative while maintaining accuracy.
         
         if intent == "wallet_analysis" and blockchain_data:
             risk_score = blockchain_data.get("risk_score", 0)
+            data_source = blockchain_data.get("data_source", "unknown")
+            
             return f"""
-I've analyzed the wallet address and found a risk score of {risk_score}/100. 
+I've analyzed the wallet address using {"real blockchain data" if data_source == "real_blockchain" else "available data"} and found a risk score of {risk_score}/100. 
 
 **Analysis Summary:**
 - Total transactions: {blockchain_data.get("total_transactions", "Unknown")}
 - Transaction volume: {blockchain_data.get("transaction_volume", "Unknown")}
 - Risk factors: {len(blockchain_data.get("risk_factors", []))} identified
+- Data source: {data_source}
 
 **Recommendations:**
 1. {"Enhanced monitoring recommended" if risk_score > 50 else "Standard monitoring sufficient"}
@@ -505,7 +570,31 @@ How else can I help you with your compliance analysis?
 """
         
         elif intent == "compliance_check":
-            return """
+            # Check if we have real news data
+            compliance_data = response_data.get("compliance_data", {})
+            news_data = compliance_data.get("recent_news", {}) if compliance_data else {}
+            
+            if news_data.get("data_source") == "real_news_api":
+                headlines = news_data.get("recent_headlines", [])
+                sources = news_data.get("sources", [])
+                
+                return f"""
+I've checked the latest regulatory databases and real-time news feeds for compliance information:
+
+**Real-Time News Analysis:**
+- Recent articles found: {news_data.get("total_articles", 0)}
+- Latest headlines: {headlines[0] if headlines else "No recent headlines"}
+- Sources: {", ".join(sources[:3]) if sources else "Various"}
+- Sentiment: {news_data.get("sentiment_distribution", {})}
+
+**Compliance Status:** Based on current real-time data
+**Sources Checked:** OFAC, SEC, CFTC regulatory feeds + Live News API
+**Recommendation:** {"Monitor closely due to recent regulatory activity" if headlines else "Continue standard monitoring"}
+
+Would you like me to analyze any specific regulatory development?
+"""
+            else:
+                return """
 I've checked the latest regulatory databases for compliance information. Based on current data:
 
 **Compliance Status:** Under review
@@ -517,12 +606,12 @@ Would you like me to set up alerts for any specific regulatory changes?
         
         else:
             return """
-I'm here to help you with blockchain compliance and risk analysis. I can:
+I'm here to help you with blockchain compliance and risk analysis using real-time data. I can:
 
-• Analyze wallet addresses for risk factors
-• Check compliance against regulatory databases  
-• Provide real-time regulatory updates
-• Assess transaction patterns and risks
+• Analyze wallet addresses for risk factors using live blockchain data
+• Check compliance against regulatory databases with real-time news
+• Provide current regulatory updates from live news feeds
+• Assess transaction patterns and risks with AI analysis
 
 What specific analysis would you like me to perform?
 """

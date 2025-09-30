@@ -51,16 +51,7 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Compliance Expert</p>
-                <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center justify-end gap-1">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                  2 interests tracked
-                </p>
-              </div>
-              <button onClick={() => { setConnectedAddress(''); setShowChat(false); }} className="px-5 py-2 text-sm font-medium bg-gray-100/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl hover:bg-gray-200/80 dark:hover:bg-gray-700/80 transition-all duration-300 border border-gray-200/50 dark:border-gray-700/50">
-                Sign Out
-              </button>
+              {/* Removed welcome message and sign out button */}
             </div>
           </div>
         </div>

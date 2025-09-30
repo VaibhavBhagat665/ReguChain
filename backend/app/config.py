@@ -3,29 +3,37 @@ import os
 import configparser
 from pathlib import Path
 
-# Load configuration from config.ini
+# Load configuration from config.ini or config_free_llm.ini
 config = configparser.ConfigParser()
-config_path = Path(__file__).parent.parent.parent / 'config.ini'
-if config_path.exists():
-    config.read(config_path)
+config_paths = [
+    Path(__file__).parent.parent.parent / 'config_free_llm.ini',
+    Path(__file__).parent.parent.parent / 'config.ini'
+]
+
+config_loaded = False
+for config_path in config_paths:
+    if config_path.exists():
+        config.read(config_path)
+        config_loaded = True
+        print(f"Loaded config from: {config_path.name}")
+        break
     
+if config_loaded:
     def get_config(section, key, default=''):
         try:
             return config.get(section, key)
         except (configparser.NoSectionError, configparser.NoOptionError):
             return default
-else:
-    # Fallback to environment variables if config.ini doesn't exist
+    # Fallback to environment variables if no config file exists
     def get_config(section, key, default=''):
         return os.getenv(f"{section}_{key}", default)
 
 # API Keys
-GOOGLE_API_KEY = get_config('API_KEYS', 'GOOGLE_API_KEY', '')
 NEWSAPI_KEY = get_config('API_KEYS', 'NEWSAPI_KEY', '')
+GROQ_API_KEY = get_config('API_KEYS', 'GROQ_API_KEY', '') or os.getenv('GROQ_API_KEY', '')
 
 # Pathway Configuration
 PATHWAY_KEY = get_config('API_KEYS', 'PATHWAY_KEY', '')
-PATHWAY_MODE = get_config('API_KEYS', 'PATHWAY_MODE', 'streaming')
 PATHWAY_STREAMING_MODE = get_config('API_KEYS', 'PATHWAY_STREAMING_MODE', 'realtime')
 PATHWAY_PERSISTENCE_BACKEND = get_config('API_KEYS', 'PATHWAY_PERSISTENCE_BACKEND', 'filesystem')
 PATHWAY_PERSISTENCE_PATH = get_config('API_KEYS', 'PATHWAY_PERSISTENCE_PATH', './pathway_data')
@@ -38,14 +46,27 @@ DATABASE_URL = get_config('API_KEYS', 'DATABASE_URL', 'sqlite:///./reguchain.db'
 VECTOR_DB_TYPE = get_config('API_KEYS', 'VECTOR_DB_TYPE', 'faiss')
 FAISS_INDEX_PATH = get_config('API_KEYS', 'FAISS_INDEX_PATH', './faiss_index')
 
-# Embeddings
-EMBEDDINGS_PROVIDER = get_config('API_KEYS', 'EMBEDDINGS_PROVIDER', 'google')
-EMBEDDINGS_MODEL = get_config('API_KEYS', 'EMBEDDINGS_MODEL', 'models/embedding-001')
+# Embeddings (Disable if using free LLM)
+DISABLE_EMBEDDINGS = get_config('API_KEYS', 'DISABLE_EMBEDDINGS', 'false').lower() == 'true'
+DISABLE_VECTOR_STORE = get_config('API_KEYS', 'DISABLE_VECTOR_STORE', 'false').lower() == 'true'
+
+if DISABLE_EMBEDDINGS:
+    EMBEDDINGS_PROVIDER = 'none'
+    EMBEDDINGS_MODEL = 'none'
+else:
+    EMBEDDINGS_PROVIDER = get_config('API_KEYS', 'EMBEDDINGS_PROVIDER', 'google')
+    EMBEDDINGS_MODEL = get_config('API_KEYS', 'EMBEDDINGS_MODEL', 'models/embedding-001')
+
 EMBEDDINGS_DIMENSION = int(get_config('API_KEYS', 'EMBEDDINGS_DIMENSION', '768'))
 
-# LLM
-LLM_PROVIDER = get_config('API_KEYS', 'LLM_PROVIDER', 'google')
-LLM_MODEL = get_config('API_KEYS', 'LLM_MODEL', 'gemini-pro')
+# LLM Configuration - Use Groq if available, fallback to Google
+if GROQ_API_KEY:
+    LLM_PROVIDER = get_config('API_KEYS', 'LLM_PROVIDER', 'groq')
+    LLM_MODEL = get_config('API_KEYS', 'LLM_MODEL', 'llama3-8b-8192')
+else:
+    LLM_PROVIDER = get_config('API_KEYS', 'LLM_PROVIDER', 'google')
+    LLM_MODEL = get_config('API_KEYS', 'LLM_MODEL', 'gemini-pro')
+
 LLM_TEMPERATURE = float(get_config('API_KEYS', 'LLM_TEMPERATURE', '0.3'))
 
 # Blockchain
