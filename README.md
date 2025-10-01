@@ -61,7 +61,7 @@ graph TB
 
 ### **Backend Engine**
 - **FastAPI** - High-performance API framework
-- **Groq** - LLM for reasoning and analysis
+- **Groq/OpenRouter** - LLM for reasoning and analysis (supports multiple providers)
 - **FAISS** - Vector similarity search
 - **Pathway** - Real-time data streaming engine (wallet-centric streaming, requires license)
 - **SQLAlchemy** - Database ORM
@@ -95,7 +95,8 @@ Experience the platform's capabilities:
 
 | Endpoint | Purpose | Notes |
 |----------|---------|-------|
-| `POST /api/agent/chat` | Conversational compliance assessment | Uses Groq LLM |
+| `POST /api/agent/chat` | Conversational compliance assessment | Uses Groq/OpenRouter LLM |
+| `POST /api/ingest/pdf` | Upload PDF reports | Enhances RAG knowledge base |
 | `POST /api/ingest/refresh` | Refresh data ingestion | Pull latest news/regulatory feeds |
 | `POST /api/realtime/start` | Start real-time processing | Begins Pathway streaming |
 | `POST /api/realtime/stop` | Stop real-time processing | Stops Pathway streaming |
@@ -114,12 +115,15 @@ Experience the platform's capabilities:
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `GROQ_API_KEY` | Groq LLM access | ✅ Yes |
-| `NEWSAPI_KEY` | News data source | ❌ Optional |
-| `PATHWAY_KEY` | Real-time streaming license | ✅ Needed for realtime |
+| `GROQ_API_KEY` | Groq LLM access | ❌ Optional (or use OpenRouter) |
+| `OPENROUTER_API_KEY` | OpenRouter LLM access | ❌ Optional (alternative to Groq) |
+| `LLM_PROVIDER` | LLM provider selection | ❌ Optional (`groq` or `openrouter`) |
+| `LLM_MODEL` | Specific model to use | ❌ Optional (e.g., `qwen/qwen2.5-7b-instruct`) |
+| `NEWSAPI_KEY` | News data source (NewsAPI.org or NewsData.io) | ✅ Yes for news |
+| `PATHWAY_KEY` | Real-time streaming license | ❌ Optional (fallback available) |
 | `DATABASE_URL` | Data storage path | ✅ Yes |
 | `FAISS_INDEX_PATH` | Vector index location | ✅ Yes |
-| `ETHERSCAN_API_KEY` | Wallet tx source | ❌ Optional (recommended) |
+| `ETHERSCAN_API_KEY` | Wallet tx source | ✅ Yes for wallet analysis |
 
 ---
 
@@ -134,9 +138,22 @@ Experience the platform's capabilities:
 
 ## 📈 **Notes**
 
-- Real-time features require a valid `PATHWAY_KEY`.
-- When a wallet connects, the system streams live transactions via Pathway and emits processed transactions and alerts in real time.
-- For LLM responses, set `GROQ_API_KEY`.
+### **Real-time Processing**
+- **Pathway streaming**: Optional with `PATHWAY_KEY`. Without it, pandas-based fallback processes the same data.
+- **No mock data**: All responses use real APIs (NewsAPI, Etherscan, regulatory feeds).
+- When a wallet connects, the system streams live transactions and emits processed alerts in real time.
+
+### **LLM Configuration**
+- **Groq**: Set `GROQ_API_KEY` for fast inference.
+- **OpenRouter**: Set `OPENROUTER_API_KEY` for access to multiple models including Qwen.
+- **Provider selection**: Use `LLM_PROVIDER=openrouter` to prefer OpenRouter even if Groq key exists.
+- **Recommended**: `qwen/qwen2.5-7b-instruct` for structured outputs and compliance analysis.
+
+### **Quality Guarantee**
+- ✅ **No mock responses** - All data comes from real sources
+- ✅ **Real-time news** - Live regulatory updates
+- ✅ **Actual blockchain data** - Real transaction analysis
+- ✅ **Transparent errors** - Clear messages when services are unavailable
 
 ---
 

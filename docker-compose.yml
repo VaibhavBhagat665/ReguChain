@@ -3,57 +3,92 @@ version: '3.8'
 services:
   backend:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      # Core Configuration
+      - DATABASE_URL=sqlite:///./data/reguchain.db
+      - VECTOR_DB_TYPE=faiss
+      - FAISS_INDEX_PATH=./data/faiss_index
+      - EMBEDDINGS_DIMENSION=1536
+      
+      # LLM Configuration (OpenRouter + Mistral)
+      - LLM_PROVIDER=openrouter
+      - LLM_MODEL=mistralai/mistral-7b-instruct
+      - EMBEDDINGS_MODEL=text-embedding-3-small
+      - EMBEDDINGS_PROVIDER=openrouter
+      - LLM_TEMPERATURE=0.2
+      
+      # API Keys (set these in .env file)
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - NEWSAPI_KEY=${NEWSAPI_KEY}
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY}
-      - DATABASE_URL=sqlite:///app/data/reguchain.db
-      - FAISS_INDEX_PATH=/app/faiss_index/index
-      - EMBEDDINGS_PROVIDER=huggingface
-      - EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
-      - EMBEDDINGS_DIMENSION=384
-      - LLM_PROVIDER=groq
-      - LLM_MODEL=llama-3.1-8b-instant
-      - LLM_TEMPERATURE=0.3
-      - PATHWAY_KEY=${PATHWAY_KEY}
-      - RISK_SCORE_THRESHOLD=50
-      - TRANSACTION_THRESHOLD=10000
+      - PATHWAY_KEY=${PATHWAY_KEY:-}
+      
+      # Data Sources
+      - OFAC_SDN_URL=https://www.treasury.gov/ofac/downloads/sdn.csv
+      - OFAC_CONSOLIDATED_URL=https://www.treasury.gov/ofac/downloads/consolidated/consolidated.xml
+      - SEC_RSS_URL=https://www.sec.gov/news/pressreleases.rss
+      - CFTC_RSS_URL=https://www.cftc.gov/news/rss
+      - FINRA_RSS_URL=https://www.finra.org/about/news-center/rss
+      - NEWSAPI_ENDPOINT=https://newsdata.io/api/1/news
+      
+      # Blockchain
+      - ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL:-https://eth-mainnet.g.alchemy.com/v2/demo}
+      - POLYGON_RPC_URL=${POLYGONS_RPC_URL:-https://polygon-rpc.com}
+      
+      # Risk Thresholds
+      - RISK_SCORE_THRESHOLD=70
+      - TRANSACTION_THRESHOLD=10000.0
+      
+      # Pathway Configuration
+      - PATHWAY_MODE=streaming
+      - PATHWAY_STREAMING_MODE=realtime
+      - PATHWAY_PERSISTENCE_BACKEND=filesystem
+      - PATHWAY_PERSISTENCE_PATH=./data/pathway_data
+      - PATHWAY_MONITORING_LEVEL=info
+      
     volumes:
-      - ./backend/data:/app/data
-      - ./backend/faiss_index:/app/faiss_index
-    networks:
-      - reguchain-network
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+      - pathway_data:/app/data/pathway_data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/realtime/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
+  # Next.js Frontend
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
     depends_on:
       - backend
-    networks:
-      - reguchain-network
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-
-networks:
-  reguchain-network:
-    driver: bridge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
-  backend-data:
-  faiss-index:
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+  pathway_data:
+    driver: local
+
+networks:
+  default:
+    name: reguchain_network

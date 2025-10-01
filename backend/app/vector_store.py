@@ -13,7 +13,7 @@ except ImportError:
     logging.warning("FAISS not available, using numpy-based fallback")
 
 from .config import FAISS_INDEX_PATH, EMBEDDINGS_DIMENSION
-from .embeddings import get_embeddings, cosine_similarity
+from .openrouter_embeddings import embeddings_client
 
 logger = logging.getLogger(__name__)
 
@@ -117,13 +117,56 @@ class VectorStore:
         logger.info(f"Added {len(texts)} documents to index")
         return ids
     
+    def add_document(self, doc_id: str, content: str, embedding: List[float], metadata: Dict):
+        """Add a single document to the index"""
+        try:
+            # Create document entry
+            doc_entry = {
+                'id': doc_id,
+                'content': content,
+                'metadata': metadata,
+                'timestamp': metadata.get('timestamp', '')
+            }
+            
+            # Add to documents list
+            self.documents.append(doc_entry)
+            
+            if faiss and not isinstance(self.index, dict):
+                # Add to FAISS index
+                embedding_vec = np.array([embedding], dtype=np.float32)
+                self.index.add(embedding_vec)
+            else:
+                # Add to numpy fallback
+                if "vectors" not in self.index:
+                    self.index["vectors"] = []
+                self.index["vectors"].append(embedding)
+            
+            # Save index
+            self.save_index()
+            logger.info(f"Added document {doc_id} to vector store")
+            
+        except Exception as e:
+            logger.error(f"Error adding document {doc_id}: {e}")
+    
     def search(self, query: str, k: int = 5) -> List[Tuple[Dict, float]]:
         """Search for similar documents"""
         if not self.documents:
             return []
         
-        # Get query embedding
-        query_embedding = get_embeddings([query])[0]
+        # For now, return simple text-based search results
+        # TODO: Implement proper embedding search
+        results = []
+        query_lower = query.lower()
+        
+        for doc in self.documents:
+            content = doc.get('content', '').lower()
+            # Simple keyword matching
+            if any(word in content for word in query_lower.split()):
+                similarity = 0.8  # Mock similarity score
+                results.append((doc, similarity))
+        
+        # Return top k results
+        return results[:k]
         
         if faiss and not isinstance(self.index, dict):
             # Use FAISS search

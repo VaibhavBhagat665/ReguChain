@@ -2,31 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { ExternalLink, Clock, Newspaper } from 'lucide-react';
-import { getStatus } from '../lib/api';
+import { fetchRealtimeNews, getTopHeadlines, getRegulatoryNews } from '../lib/api';
 
 export default function NewsFeed() {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
-
-  const SAMPLE_NEWS = [
-    {
-      id: 'n1',
-      title: 'Regulators increase crypto enforcement actions in Q3',
-      source: 'Industry News',
-      timestamp: new Date().toISOString(),
-      snippet: 'Several enforcement actions were announced targeting mixing services and sanctioned addresses. This increases the importance of continuous monitoring.',
-      link: '#'
-    },
-    {
-      id: 'n2',
-      title: 'OFAC updates sanctions guidance for virtual assets',
-      source: 'OFAC',
-      timestamp: new Date().toISOString(),
-      snippet: 'New guidance clarifies obligations for service providers interacting with sanctioned entities.',
-      link: '#'
-    },
-  ];
 
   useEffect(() => {
     mountedRef.current = true;
@@ -35,36 +16,48 @@ export default function NewsFeed() {
     const load = async () => {
       try {
         setLoading(true);
-        const status = await getStatus();
+        // Prefer realtime News API (no mock)
+        const res = await fetchRealtimeNews('cryptocurrency OR blockchain OR DeFi OR regulatory OR compliance', 20);
         if (!mountedRef.current) return;
-        if (status && status.last_updates && status.last_updates.length > 0) {
-          // Map to UI-friendly shape
-          const items = status.last_updates.map((u, idx) => ({
-            id: u.id || `s-${idx}`,
-            title: u.source || 'News',
-            source: u.source || 'Unknown',
-            timestamp: u.timestamp || new Date().toISOString(),
-            snippet: u.text || '',
-            link: u.link || '#'
+        const articles = Array.isArray(res?.articles) ? res.articles : [];
+        let items = articles.map((a, idx) => ({
+          id: a.id || `a-${idx}`,
+          title: a.title,
+          source: a.source || 'Unknown',
+          timestamp: a.published_at || new Date().toISOString(),
+          snippet: a.description || a.content || '',
+          link: a.verification_url || a.url || '#',
+        }));
+        // Fallback to headlines if empty
+        if (items.length === 0) {
+          const h = await getTopHeadlines('business', 'us', 10);
+          const headlines = Array.isArray(h?.headlines) ? h.headlines : [];
+          items = headlines.map((a, idx) => ({
+            id: a.id || `h-${idx}`,
+            title: a.title,
+            source: a.source || 'Unknown',
+            timestamp: a.published_at || new Date().toISOString(),
+            snippet: a.description || a.content || '',
+            link: a.url || '#',
           }));
-          setNews(items);
-        } else {
-          setNews(SAMPLE_NEWS);
         }
+        setNews(items);
       } catch (e) {
         if (e.name === 'AbortError') return;
         console.error('Error loading news/status:', e);
-        setNews(SAMPLE_NEWS);
+        setNews([]);
       } finally {
         if (mountedRef.current) setLoading(false);
       }
     };
 
     load();
+    const id = setInterval(load, 120000); // refresh every 2 minutes
 
     return () => {
       mountedRef.current = false;
       try { controller.abort(); } catch (e) {}
+      clearInterval(id);
     };
   }, []);
 
@@ -79,7 +72,7 @@ export default function NewsFeed() {
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading news...</div>
-      ) : (
+      ) : news.length > 0 ? (
         <div className="space-y-3">
           {news.map((item) => (
             <div key={item.id} className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
@@ -98,10 +91,12 @@ export default function NewsFeed() {
             </div>
           ))}
         </div>
+      ) : (
+        <div className="text-sm text-gray-500">No recent news available. Ensure NEWSAPI_KEY (or NewsData.io key starting with pub_) is configured on the backend.</div>
       )}
 
       <div className="mt-4 text-xs text-gray-500">
-        These news items are used to enrich AI responses and can be connected to live feeds (OFAC, SEC, NewsAPI) in production.
+        Live news is sourced from configured providers (NewsAPI.org or NewsData.io). All items include verification links.
       </div>
     </div>
   );

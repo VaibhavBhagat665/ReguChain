@@ -12,26 +12,6 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   const [agentCapabilities, setAgentCapabilities] = useState([]);
   const messagesEndRef = useRef(null);
 
-  const SAMPLE_RESPONSES = [
-    {
-      id: 's-1',
-      role: 'assistant',
-      content: `Here is an analysis summary based on typical patterns:\n\n- Risk Score: 42/100 (Medium)\n- Notable factors: interaction with high-risk labeled addresses, multiple small inbound transactions\n- Recommendation: Enable enhanced monitoring and review large counterparties\n\nWould you like me to run a deeper transaction-level analysis?`,
-      metadata: { confidence: 0.6 }
-    },
-    {
-      id: 's-2',
-      role: 'assistant',
-      content: `News-aware response:\n\nRecent regulatory reports indicate increased enforcement in the crypto sector. Based on that, consider freezing high-risk counterparties and performing an AML review.`,
-      metadata: { confidence: 0.55 }
-    },
-    {
-      id: 's-3',
-      role: 'assistant',
-      content: `Quick summary:\n\nNo immediate sanctions found for this address in public watchlists (sample data). Suggested next steps: verify counterparties, cross-check with KYC records, and set up alerts.`,
-      metadata: { confidence: 0.5 }
-    }
-  ];
 
   const mountedRef = useRef(true);
   const sendControllerRef = useRef(null);
@@ -193,6 +173,12 @@ What would you like to explore first?`,
 
       const agentResponse = await response.json();
       if (!mountedRef.current) return;
+      
+      // Update conversation ID from backend response
+      if (agentResponse.conversation_id && agentResponse.conversation_id !== conversationId) {
+        setConversationId(agentResponse.conversation_id);
+      }
+      
       const assistantMessage = {
         id: uuidv4(),
         role: 'assistant',
@@ -227,26 +213,16 @@ What would you like to explore first?`,
       }
       console.error('Error sending message:', error);
 
-      // Use a mock response so the UI still demonstrates AI behavior
+      // No mock responses. Provide a transparent error message and guidance.
       if (mountedRef.current) {
-        const sample = SAMPLE_RESPONSES[Math.floor(Math.random() * SAMPLE_RESPONSES.length)];
         const assistantMessage = {
           id: uuidv4(),
           role: 'assistant',
-          content: sample.content,
+          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n- Verify GROQ_API_KEY or OPENROUTER_API_KEY for LLM responses\n- Check /api/realtime/health for service status\n- Review logs for /api/agent/chat errors`,
           timestamp: new Date().toISOString(),
-          metadata: sample.metadata || {}
+          metadata: {}
         };
         setMessages(prev => [...prev, assistantMessage]);
-
-        // Also send analysis result if sample contains plausible structure
-        if (onAnalysisResult && sample.content.toLowerCase().includes('risk')) {
-          onAnalysisResult({
-            risk_assessment: { score: sample.metadata?.confidence ? Math.round(sample.metadata.confidence * 100) : 50 },
-            blockchain_data: null,
-            suggested_actions: []
-          });
-        }
       }
     } finally {
       if (mountedRef.current) setIsLoading(false);

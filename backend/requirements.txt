@@ -1,40 +1,44 @@
+# Core FastAPI and web framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
+python-multipart==0.0.6
 pydantic==2.5.0
-sqlalchemy==2.0.23
-aiohttp==3.9.1
-requests==2.31.0
-numpy==1.24.3
-faiss-cpu==1.7.4
-groq==0.9.0
-python-dotenv==1.0.0
-pytest==7.4.3
-pytest-asyncio==0.21.1
-web3==6.11.3
-python-dateutil==2.8.2
-eth-account==0.9.0
-eth-utils==2.3.1
 
-# News API client
-newsapi-python==0.2.7
-
-# LangChain and ML libraries
-langchain==0.1.0
-langchain-community==0.0.10
-chromadb==0.4.18
-sentence-transformers==2.2.2
-transformers==4.36.2
-torch==2.1.2
-scikit-learn==1.3.2
-pandas==2.1.4
-beautifulsoup4==4.12.2
-lxml==4.9.3
-feedparser==6.0.10
-
-# Pathway for real-time streaming
+# Pathway for real-time pipelines
 pathway==0.13.0
 
-# Additional dependencies for real-time processing
+# Database and storage
+sqlalchemy==2.0.23
+alembic==1.13.0
+
+# Vector database and embeddings
+faiss-cpu==1.7.4
+sentence-transformers==2.2.2
+numpy==1.24.3
+
+# LLM and AI
+openai>=1.30.0,<2
+langchain==0.0.340
+langchain-community==0.0.1
+groq==0.4.1
+
+# Data processing
+pandas==2.1.4
+requests==2.31.0
+aiohttp==3.9.1
+feedparser==6.0.10
+beautifulsoup4==4.12.2
+lxml==4.9.3
+pypdf>=3.17.0,<4
+
+# Utilities
+python-dotenv==1.0.0
+pyyaml==6.0.1
 schedule==1.2.0
-asyncio-mqtt==0.16.1
 websockets==12.0
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0

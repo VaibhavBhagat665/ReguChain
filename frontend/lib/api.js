@@ -148,3 +148,56 @@ export const getStreamRecords = async (streamName, { limit = 10, walletAddress =
     throw e;
   }
 };
+
+// Realtime news helpers (no mock fallbacks)
+export const fetchRealtimeNews = async (query = 'cryptocurrency OR blockchain OR regulatory', pageSize = 20) => {
+  try {
+    const res = await api.post('/api/realtime/news/fetch', {
+      query,
+      page_size: pageSize,
+    });
+    return res.data; // { count, articles: [...] }
+  } catch (e) {
+    console.error('Fetch realtime news error:', e);
+    throw e;
+  }
+};
+
+export const getTopHeadlines = async (category = 'business', country = 'us', pageSize = 20) => {
+  try {
+    const res = await api.get('/api/realtime/news/headlines', {
+      params: { category, country, page_size: pageSize },
+    });
+    return res.data; // { count, headlines: [...] }
+  } catch (e) {
+    console.error('Get top headlines error:', e);
+    throw e;
+  }
+};
+
+export const getRegulatoryNews = async () => {
+  try {
+    const res = await api.get('/api/realtime/news/regulatory');
+    return res.data; // { count, articles: [...] }
+  } catch (e) {
+    console.error('Get regulatory news error:', e);
+    throw e;
+  }
+};
+
+// PDF upload helper
+export const uploadPdf = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post('/api/ingest/pdf', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data; // { message, title, chunks }
+  } catch (e) {
+    console.error('Upload PDF error:', e);
+    throw e;
+  }
+};

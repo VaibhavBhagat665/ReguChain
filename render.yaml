@@ -1,31 +1,44 @@
 services:
-  # Backend API Service
+  # ReguChain Pathway-Powered Backend
   - type: web
-    name: reguchain-watch-api
+    name: reguchain-pathway-api
     env: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     envVars:
-      - key: GROQ_API_KEY
+      # Core API Keys
+      - key: OPENROUTER_API_KEY
         sync: false
       - key: NEWSAPI_KEY
         sync: false
+      - key: ETHERSCAN_API_KEY
+        sync: false
+      - key: PATHWAY_KEY
+        sync: false
+      
+      # Database & Storage
       - key: DATABASE_URL
         value: sqlite:///app/data/reguchain.db
+      - key: VECTOR_DB_TYPE
+        value: faiss
       - key: FAISS_INDEX_PATH
-        value: /app/faiss_index/index
-      - key: EMBEDDINGS_PROVIDER
-        value: huggingface
-      - key: EMBEDDINGS_MODEL
-        value: sentence-transformers/all-MiniLM-L6-v2
-      - key: EMBEDDINGS_DIMENSION
-        value: 384
+        value: /app/data/faiss_index
+      
+      # LLM Configuration (OpenRouter + Mistral)
       - key: LLM_PROVIDER
-        value: groq
+        value: openrouter
       - key: LLM_MODEL
-        value: llama-3.1-8b-instant
+        value: mistralai/mistral-7b-instruct
+      - key: EMBEDDINGS_MODEL
+        value: text-embedding-3-small
+      - key: EMBEDDINGS_PROVIDER
+        value: openrouter
+      - key: EMBEDDINGS_DIMENSION
+        value: 1536
       - key: LLM_TEMPERATURE
-        value: 0.3
+        value: 0.2
+      
+      # Pathway Configuration
       - key: PATHWAY_MODE
         value: streaming
       - key: PATHWAY_STREAMING_MODE
@@ -33,42 +46,57 @@ services:
       - key: PATHWAY_PERSISTENCE_BACKEND
         value: filesystem
       - key: PATHWAY_PERSISTENCE_PATH
-        value: /app/pathway_data
-      - key: PATHWAY_KEY
-        sync: false
+        value: /app/data/pathway_data
+      - key: PATHWAY_MONITORING_LEVEL
+        value: info
+      
+      # Risk Thresholds
       - key: RISK_SCORE_THRESHOLD
-        value: 50
+        value: 70
       - key: TRANSACTION_THRESHOLD
-        value: 10000
-    healthCheckPath: /api/realtime/health
+        value: 10000.0
+      
+      # Data Sources
+      - key: OFAC_SDN_URL
+        value: https://www.treasury.gov/ofac/downloads/sdn.csv
+      - key: OFAC_CONSOLIDATED_URL
+        value: https://www.treasury.gov/ofac/downloads/consolidated/consolidated.xml
+      - key: SEC_RSS_URL
+        value: https://www.sec.gov/news/pressreleases.rss
+      - key: CFTC_RSS_URL
+        value: https://www.cftc.gov/news/rss
+      - key: FINRA_RSS_URL
+        value: https://www.finra.org/about/news-center/rss
+      - key: NEWSAPI_ENDPOINT
+        value: https://newsdata.io/api/1/news
+      
+      # Blockchain RPCs
+      - key: ETHEREUM_RPC_URL
+        value: https://eth-mainnet.g.alchemy.com/v2/demo
+      - key: POLYGON_RPC_URL
+        value: https://polygon-rpc.com
+    
+    healthCheckPath: /api/health
     disk:
       name: reguchain-data
       mountPath: /app/data
       sizeGB: 1
 
-  # Background Worker for Ingestion (Optional)
-  - type: worker
-    name: reguchain-watch-ingester
+  # Frontend (Next.js)
+  - type: web
+    name: reguchain-pathway-frontend
     env: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: python -m app.ingest_worker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
     envVars:
-      - key: GROQ_API_KEY
-        sync: false
-      - key: NEWSAPI_KEY
-        sync: false
-      - key: DATABASE_URL
-        value: sqlite:///app/data/reguchain.db
-      - key: FAISS_INDEX_PATH
-        value: /app/faiss_index/index
-    disk:
-      name: reguchain-data
-      mountPath: /app/data
-      sizeGB: 1
+      - key: NEXT_PUBLIC_API_URL
+        value: https://reguchain-pathway-api.onrender.com
+      - key: NEXT_PUBLIC_WS_URL
+        value: wss://reguchain-pathway-api.onrender.com
+    healthCheckPath: /
 
-# Cron Jobs for periodic data refresh
+# Cron Jobs for system health
 cronJobs:
-  - name: reguchain-data-refresh
-    schedule: "0 */6 * * *"  # Every 6 hours
-    command: curl -X POST https://reguchain-watch-api.onrender.com/api/ingest/refresh
+  - name: reguchain-health-check
+    schedule: "*/15 * * * *"  # Every 15 minutes
+    command: curl -f https://reguchain-pathway-api.onrender.com/api/health

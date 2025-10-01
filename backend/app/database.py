@@ -1,138 +1,271 @@
-"""Database module for ReguChain Watch"""
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+"""Enhanced database operations for ReguChain RAG system"""
+import sqlite3
 import json
-from typing import Optional, List, Dict
-from .config import DATABASE_URL
+import logging
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from pathlib import Path
 
-Base = declarative_base()
+logger = logging.getLogger(__name__)
 
-class Document(Base):
-    """Document model for storing ingested content"""
-    __tablename__ = "documents"
+class Database:
+    """Enhanced SQLite database for RAG system"""
     
-    id = Column(Integer, primary_key=True, index=True)
-    source = Column(String(100), index=True)
-    text = Column(Text)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    link = Column(String(500))
-    embedding_id = Column(Integer, index=True)
-    meta = Column("metadata", Text)  # JSON string for additional data
+    def __init__(self, db_path: str = "./reguchain.db"):
+        self.db_path = db_path
+        self.init_database()
     
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "source": self.source,
-            "text": self.text,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "link": self.link,
-            "embedding_id": self.embedding_id,
-            "metadata": json.loads(self.meta) if self.meta else {}
-        }
-
-class Transaction(Base):
-    """Transaction model for blockchain data"""
-    __tablename__ = "transactions"
+    def init_database(self):
+        """Initialize database tables"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Enhanced documents table for RAG
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id TEXT PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        metadata TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        source TEXT NOT NULL,
+                        category TEXT,
+                        risk_level TEXT,
+                        embedding_stored BOOLEAN DEFAULT FALSE
+                    )
+                """)
+                
+                # Transactions table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS transactions (
+                        id TEXT PRIMARY KEY,
+                        tx_hash TEXT NOT NULL,
+                        from_address TEXT NOT NULL,
+                        to_address TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        risk_score REAL DEFAULT 0,
+                        metadata TEXT,
+                        chain TEXT DEFAULT 'ethereum'
+                    )
+                """)
+                
+                # Ingestion stats table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS ingestion_stats (
+                        source TEXT PRIMARY KEY,
+                        last_run TEXT,
+                        documents_count INTEGER DEFAULT 0,
+                        last_error TEXT
+                    )
+                """)
+                
+                conn.commit()
+                logger.info("Database initialized successfully")
+                
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
     
-    id = Column(Integer, primary_key=True, index=True)
-    tx_hash = Column(String(100), unique=True, index=True)
-    from_address = Column(String(100), index=True)
-    to_address = Column(String(100), index=True)
-    amount = Column(Float)
-    timestamp = Column(DateTime)
-    chain = Column(String(50))
+    async def store_document(self, doc: Dict[str, Any]):
+        """Store a document with enhanced metadata"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                metadata = doc.get('metadata', {})
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO documents 
+                    (id, content, metadata, timestamp, source, category, risk_level, embedding_stored)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    doc['id'],
+                    doc['content'],
+                    json.dumps(metadata),
+                    metadata.get('timestamp', datetime.now().isoformat()),
+                    metadata.get('source', 'unknown'),
+                    metadata.get('category', 'general'),
+                    metadata.get('risk_level', 'low'),
+                    False  # Will be updated when embedding is stored
+                ))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Error storing document {doc.get('id', 'unknown')}: {e}")
     
-    def to_dict(self):
-        return {
-            "tx": self.tx_hash,
-            "from": self.from_address,
-            "to": self.to_address,
-            "amount": self.amount,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "chain": self.chain
-        }
+    async def get_documents_by_metadata(self, key: str, value: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get documents by metadata field"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, content, metadata, timestamp, source, category, risk_level
+                    FROM documents
+                    WHERE json_extract(metadata, '$.' || ?) = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (key, value, limit))
+                
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "content": row[1],
+                        "metadata": json.loads(row[2]),
+                        "timestamp": row[3],
+                        "source": row[4],
+                        "category": row[5],
+                        "risk_level": row[6]
+                    })
+                
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error getting documents by metadata: {e}")
+            return []
+    
+    def get_recent_documents(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent documents"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, content, metadata, timestamp, source, category, risk_level
+                    FROM documents
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,))
+                
+                results = []
+                for row in cursor.fetchall():
+                    metadata = json.loads(row[2])
+                    results.append({
+                        "id": row[0],
+                        "text": row[1][:200] + "..." if len(row[1]) > 200 else row[1],
+                        "metadata": metadata,
+                        "timestamp": row[3],
+                        "source": row[4],
+                        "category": row[5],
+                        "risk_level": row[6],
+                        "link": metadata.get("link", "")
+                    })
+                
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error getting recent documents: {e}")
+            return []
+    
+    def get_documents_by_source(self, source: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get documents by source"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, content, metadata, timestamp, source, category, risk_level
+                    FROM documents
+                    WHERE source = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (source, limit))
+                
+                results = []
+                for row in cursor.fetchall():
+                    results.append({
+                        "id": row[0],
+                        "content": row[1],
+                        "metadata": json.loads(row[2]),
+                        "timestamp": row[3],
+                        "source": row[4],
+                        "category": row[5],
+                        "risk_level": row[6]
+                    })
+                
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error getting documents by source: {e}")
+            return []
+    
+    def update_ingestion_stats(self, source: str, documents_count: int, error: str = None):
+        """Update ingestion statistics"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO ingestion_stats 
+                    (source, last_run, documents_count, last_error)
+                    VALUES (?, ?, ?, ?)
+                """, (
+                    source,
+                    datetime.now().isoformat(),
+                    documents_count,
+                    error
+                ))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Error updating ingestion stats: {e}")
+    
+    def get_ingestion_stats(self) -> Dict[str, Any]:
+        """Get ingestion statistics"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT source, last_run, documents_count, last_error
+                    FROM ingestion_stats
+                """)
+                
+                stats = {}
+                for row in cursor.fetchall():
+                    stats[row[0]] = {
+                        "last_run": row[1],
+                        "documents_count": row[2],
+                        "last_error": row[3]
+                    }
+                
+                return stats
+                
+        except Exception as e:
+            logger.error(f"Error getting ingestion stats: {e}")
+            return {}
+    
+    def store_transaction(self, tx_data: Dict[str, Any]):
+        """Store transaction data"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO transactions 
+                    (id, tx_hash, from_address, to_address, amount, timestamp, risk_score, metadata, chain)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    tx_data.get("id", ""),
+                    tx_data.get("tx", ""),
+                    tx_data.get("from", ""),
+                    tx_data.get("to", ""),
+                    float(tx_data.get("amount", 0)),
+                    tx_data.get("timestamp", datetime.now().isoformat()),
+                    float(tx_data.get("risk_score", 0)),
+                    json.dumps(tx_data.get("metadata", {})),
+                    tx_data.get("chain", "ethereum")
+                ))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Error storing transaction: {e}")
+    
+    def get_total_documents(self) -> int:
+        """Get total number of documents"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM documents")
+                return cursor.fetchone()[0]
+        except Exception as e:
+            logger.error(f"Error getting total documents: {e}")
+            return 0
 
-# Create engine and session
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-def get_db():
-    """Get database session"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def save_document(source: str, text: str, link: str = "", metadata: Dict = None, embedding_id: int = None):
-    """Save a document to the database"""
-    db = SessionLocal()
-    try:
-        doc = Document(
-            source=source,
-            text=text,
-            link=link,
-            embedding_id=embedding_id,
-            meta=json.dumps(metadata or {})
-        )
-        db.add(doc)
-        db.commit()
-        db.refresh(doc)
-        return doc
-    finally:
-        db.close()
-
-def get_recent_documents(limit: int = 10) -> List[Dict]:
-    """Get recent documents"""
-    db = SessionLocal()
-    try:
-        docs = db.query(Document).order_by(Document.timestamp.desc()).limit(limit).all()
-        return [doc.to_dict() for doc in docs]
-    finally:
-        db.close()
-
-def get_documents_by_ids(ids: List[int]) -> List[Dict]:
-    """Get documents by their IDs"""
-    db = SessionLocal()
-    try:
-        docs = db.query(Document).filter(Document.embedding_id.in_(ids)).all()
-        return [doc.to_dict() for doc in docs]
-    finally:
-        db.close()
-
-def save_transaction(tx_hash: str, from_addr: str, to_addr: str, amount: float, timestamp: datetime, chain: str = "ethereum"):
-    """Save a blockchain transaction"""
-    db = SessionLocal()
-    try:
-        tx = Transaction(
-            tx_hash=tx_hash,
-            from_address=from_addr,
-            to_address=to_addr,
-            amount=amount,
-            timestamp=timestamp,
-            chain=chain
-        )
-        db.add(tx)
-        db.commit()
-        return tx
-    except:
-        db.rollback()
-        return None
-    finally:
-        db.close()
-
-def get_transactions_for_address(address: str, limit: int = 10) -> List[Dict]:
-    """Get transactions for a specific address"""
-    db = SessionLocal()
-    try:
-        txs = db.query(Transaction).filter(
-            (Transaction.from_address == address) | (Transaction.to_address == address)
-        ).order_by(Transaction.timestamp.desc()).limit(limit).all()
-        return [tx.to_dict() for tx in txs]
-    finally:
-        db.close()
+# Global database instance
+database = Database()

@@ -31,6 +31,7 @@ else:
 # API Keys
 NEWSAPI_KEY = get_config('API_KEYS', 'NEWSAPI_KEY', '')
 GROQ_API_KEY = get_config('API_KEYS', 'GROQ_API_KEY', '') or os.getenv('GROQ_API_KEY', '')
+OPENROUTER_API_KEY = get_config('API_KEYS', 'OPENROUTER_API_KEY', '') or os.getenv('OPENROUTER_API_KEY', '')
 
 # Pathway Configuration
 PATHWAY_KEY = get_config('API_KEYS', 'PATHWAY_KEY', '')
@@ -59,9 +60,10 @@ else:
     # all-MiniLM-L6-v2 dimension is 384
     EMBEDDINGS_DIMENSION = int(get_config('API_KEYS', 'EMBEDDINGS_DIMENSION', '384'))
 
-# LLM Configuration - Groq only
-LLM_PROVIDER = get_config('API_KEYS', 'LLM_PROVIDER', 'groq')
-LLM_MODEL = get_config('API_KEYS', 'LLM_MODEL', 'llama-3.1-8b-instant')
+# LLM Configuration - OpenRouter for Pathway
+LLM_PROVIDER = get_config('API_KEYS', 'LLM_PROVIDER', 'openrouter')
+LLM_MODEL = get_config('API_KEYS', 'LLM_MODEL', 'mistralai/mistral-7b-instruct')
+EMBEDDINGS_MODEL = get_config('API_KEYS', 'EMBEDDINGS_MODEL', 'text-embedding-3-small')
 
 LLM_TEMPERATURE = float(get_config('API_KEYS', 'LLM_TEMPERATURE', '0.3'))
 
@@ -72,15 +74,16 @@ ETHERSCAN_API_KEY = get_config('API_KEYS', 'ETHERSCAN_API_KEY', '')
 
 # Risk Assessment
 RISK_SCORE_THRESHOLD = float(get_config('API_KEYS', 'RISK_SCORE_THRESHOLD', '50'))
-TRANSACTION_THRESHOLD = float(get_config('API_KEYS', 'TRANSACTION_THRESHOLD', '10000'))
+TRANSACTION_THRESHOLD = float(get_config('API_KEYS', 'TRANSACTION_THRESHOLD', '10000.0'))
 
-# Data Sources
-OFAC_SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv"
-SEC_RSS_URL = "https://www.sec.gov/rss/litigation/litreleases.xml"
-CFTC_RSS_URL = "https://www.cftc.gov/RSS/cftcrss.xml"
-FINRA_RSS_URL = "https://www.finra.org/rss/news/all"
-NEWSAPI_ENDPOINT = "https://newsapi.org/v2/everything"
+# OFAC Sanctions Lists
+OFAC_SDN_URL = get_config('API_KEYS', 'OFAC_SDN_URL', 'https://www.treasury.gov/ofac/downloads/sdn.csv')
+OFAC_CONSOLIDATED_URL = get_config('API_KEYS', 'OFAC_CONSOLIDATED_URL', 'https://www.treasury.gov/ofac/downloads/consolidated/consolidated.xml')
 
-# Ensure directories exist
-Path(PATHWAY_PERSISTENCE_PATH).mkdir(parents=True, exist_ok=True)
-Path(FAISS_INDEX_PATH).parent.mkdir(parents=True, exist_ok=True)
+# RSS Regulatory Feeds
+SEC_RSS_URL = get_config('API_KEYS', 'SEC_RSS_URL', 'https://www.sec.gov/news/pressreleases.rss')
+CFTC_RSS_URL = get_config('API_KEYS', 'CFTC_RSS_URL', 'https://www.cftc.gov/news/rss')
+FINRA_RSS_URL = get_config('API_KEYS', 'FINRA_RSS_URL', 'https://www.finra.org/about/news-center/rss')
+
+# NewsData.io API configuration
+NEWSAPI_ENDPOINT = "https://newsdata.io/api/1/news"
