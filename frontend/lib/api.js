@@ -14,8 +14,73 @@ const api = axios.create({
   },
 });
 
-// API functions
+// API functions - Updated for new backend endpoints
 export const queryAPI = async (question, target = null, conversationId = null) => {
+  try {
+    // Use the proper agent chat endpoint
+    const payload = {
+      message: question,
+      conversation_id: conversationId || 'default',
+      wallet_address: target,
+      context: {}
+    };
+
+    const response = await api.post('/api/agent/chat', payload);
+    
+    // Transform response to match expected format
+    const data = response.data;
+    
+    // Get evidence from context documents if available
+    const evidence = [];
+    const news = [];
+    
+    // Extract evidence from the response metadata if available
+    if (data.context_documents) {
+      data.context_documents.forEach(doc => {
+        const evidenceItem = {
+          source: doc.source || 'Unknown',
+          snippet: doc.content || doc.text || '',
+          link: doc.link || '',
+          timestamp: doc.timestamp || '',
+          title: doc.title || '',
+          similarity: doc.similarity || 1.0
+        };
+        
+        if (doc.source && doc.source.includes('NEWS')) {
+          news.push({
+            title: doc.title || 'News Update',
+            url: doc.link || '',
+            timestamp: doc.timestamp || '',
+            source: doc.source || ''
+          });
+        }
+        
+        evidence.push(evidenceItem);
+      });
+    }
+    
+    return {
+      answer: data.message,
+      risk_score: data.risk_assessment?.score || 0,
+      evidence: evidence,
+      alerts: [], // Will be populated from alerts endpoint
+      news: news,
+      conversation_id: data.conversation_id,
+      confidence: data.confidence,
+      suggested_actions: data.suggested_actions || [],
+      follow_up_questions: data.follow_up_questions || [],
+      risk_assessment: data.risk_assessment,
+      blockchain_data: data.blockchain_data,
+      capabilities_used: data.capabilities_used || []
+    };
+  } catch (error) {
+    console.error('Query API error:', error);
+    throw error;
+  }
+};
+
+// Legacy chat endpoint for compatibility
+export const chatAPI = async (question, target = null, conversationId = null) => {
   try {
     const payload = {
       message: question,
@@ -26,7 +91,7 @@ export const queryAPI = async (question, target = null, conversationId = null) =
     const response = await api.post('/api/agent/chat', payload);
     return response.data;
   } catch (error) {
-    console.error('Query API error:', error);
+    console.error('Chat API error:', error);
     throw error;
   }
 };
@@ -45,11 +110,59 @@ export const getStatus = async () => {
 
 export const checkHealth = async () => {
   try {
-    const response = await api.get('/api/realtime/health');
+    const response = await api.get('/api/health');
     return response.data;
   } catch (error) {
     console.error('Health check error:', error);
     return { status: 'error', services: {} };
+  }
+};
+
+// Get recent alerts
+export const getAlerts = async (limit = 10) => {
+  try {
+    const response = await api.get(`/api/alerts?limit=${limit}`);
+    return response.data;
+  } catch (error) {
+    console.error('Get alerts error:', error);
+    throw error;
+  }
+};
+
+// Add wallet to monitoring
+export const addWalletMonitoring = async (walletAddress) => {
+  try {
+    const response = await api.post('/api/wallet/monitor', {
+      wallet_address: walletAddress
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Add wallet monitoring error:', error);
+    throw error;
+  }
+};
+
+// Analyze wallet
+export const analyzeWallet = async (walletAddress) => {
+  try {
+    const response = await api.post('/api/wallet/analyze', {
+      address: walletAddress
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Analyze wallet error:', error);
+    throw error;
+  }
+};
+
+// Get RAG system status
+export const getRagStatus = async () => {
+  try {
+    const response = await api.get('/api/rag/status');
+    return response.data;
+  } catch (error) {
+    console.error('Get RAG status error:', error);
+    throw error;
   }
 };
 
@@ -149,14 +262,27 @@ export const getStreamRecords = async (streamName, { limit = 10, walletAddress =
   }
 };
 
-// Realtime news helpers (no mock fallbacks)
+// News and status helpers - Updated to use new endpoints
 export const fetchRealtimeNews = async (query = 'cryptocurrency OR blockchain OR regulatory', pageSize = 20) => {
   try {
-    const res = await api.post('/api/realtime/news/fetch', {
-      query,
-      page_size: pageSize,
-    });
-    return res.data; // { count, articles: [...] }
+    // Use the status endpoint to get recent news documents
+    const res = await api.get('/api/status');
+    const lastUpdates = res.data.last_updates || [];
+    
+    // Filter for news items
+    const newsItems = lastUpdates
+      .filter(item => item.source === 'NEWS_API' || item.type === 'regulatory_news')
+      .map(item => ({
+        id: item.id,
+        title: item.title,
+        source: item.source,
+        published_at: item.timestamp,
+        description: item.title,
+        url: item.link,
+        verification_url: item.link
+      }));
+    
+    return { count: newsItems.length, articles: newsItems };
   } catch (e) {
     console.error('Fetch realtime news error:', e);
     throw e;
@@ -165,10 +291,22 @@ export const fetchRealtimeNews = async (query = 'cryptocurrency OR blockchain OR
 
 export const getTopHeadlines = async (category = 'business', country = 'us', pageSize = 20) => {
   try {
-    const res = await api.get('/api/realtime/news/headlines', {
-      params: { category, country, page_size: pageSize },
-    });
-    return res.data; // { count, headlines: [...] }
+    // Fallback to status endpoint for headlines
+    const res = await api.get('/api/status');
+    const lastUpdates = res.data.last_updates || [];
+    
+    const headlines = lastUpdates
+      .filter(item => item.source.includes('RSS') || item.type === 'regulatory_update')
+      .map(item => ({
+        id: item.id,
+        title: item.title,
+        source: item.source,
+        published_at: item.timestamp,
+        description: item.title,
+        url: item.link
+      }));
+    
+    return { count: headlines.length, headlines: headlines };
   } catch (e) {
     console.error('Get top headlines error:', e);
     throw e;
@@ -177,8 +315,21 @@ export const getTopHeadlines = async (category = 'business', country = 'us', pag
 
 export const getRegulatoryNews = async () => {
   try {
-    const res = await api.get('/api/realtime/news/regulatory');
-    return res.data; // { count, articles: [...] }
+    const res = await api.get('/api/status');
+    const lastUpdates = res.data.last_updates || [];
+    
+    const articles = lastUpdates
+      .filter(item => item.risk_level === 'high' || item.risk_level === 'critical')
+      .map(item => ({
+        id: item.id,
+        title: item.title,
+        source: item.source,
+        published_at: item.timestamp,
+        description: item.title,
+        url: item.link
+      }));
+    
+    return { count: articles.length, articles: articles };
   } catch (e) {
     console.error('Get regulatory news error:', e);
     throw e;

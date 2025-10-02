@@ -40,6 +40,7 @@ class AgentResponse(BaseModel):
     confidence: float = Field(default=0.8, ge=0, le=1)
     capabilities_used: Optional[List[str]] = []
     follow_up_questions: Optional[List[str]] = []
+    context_documents: Optional[List[Dict[str, Any]]] = []
 
 class WalletAnalysisRequest(BaseModel):
     """Wallet analysis request"""

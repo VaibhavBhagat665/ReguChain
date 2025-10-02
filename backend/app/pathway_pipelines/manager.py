@@ -15,6 +15,7 @@ from .news_pipeline import news_pathway_pipeline
 from .blockchain_pipeline import blockchain_pathway_pipeline
 from .embeddings_pipeline import embeddings_pathway_pipeline
 from .alerts_pipeline import alerts_pathway_pipeline
+from ..database import database
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,8 @@ class PathwayPipelineManager:
             'pipelines_status': {}
         }
         
-    def start_all_pipelines(self):
-        """Start all Pathway pipelines"""
+    async def start_all_pipelines(self):
+        """Start all Pathway pipelines with real-time data fetching"""
         if self.is_running:
             logger.warning("⚠️ Pipelines already running")
             return
@@ -40,13 +41,9 @@ class PathwayPipelineManager:
         logger.info("🚀 Starting Pathway pipeline manager...")
         
         try:
-            # Create the unified pipeline
-            unified_pipeline = self._create_unified_pipeline()
-            
-            # Start pipeline in separate thread
+            # Start background data fetching tasks
             self.pipeline_thread = threading.Thread(
-                target=self._run_pipeline,
-                args=(unified_pipeline,),
+                target=self._run_background_pipelines,
                 daemon=True
             )
             self.pipeline_thread.start()
@@ -58,37 +55,94 @@ class PathwayPipelineManager:
             logger.error(f"❌ Error starting pipelines: {e}")
             raise
     
-    def _create_unified_pipeline(self):
-        """Create unified Pathway pipeline combining all sources"""
-        logger.info("🔧 Creating unified Pathway pipeline...")
+    def _run_background_pipelines(self):
+        """Run background data fetching and processing"""
+        import time
         
-        # Create individual pipelines
-        ofac_data = ofac_pathway_pipeline.create_unified_pipeline()
-        rss_data = rss_pathway_pipeline.create_rss_pipeline()
-        news_data = news_pathway_pipeline.create_news_pipeline()
-        blockchain_data = blockchain_pathway_pipeline.create_blockchain_pipeline()
+        logger.info("🔄 Starting background pipeline execution...")
         
-        # Combine all data sources
-        all_documents = ofac_data + rss_data + news_data + blockchain_data
-        
-        # Add unified processing metadata
-        all_documents = all_documents.select(
-            *pw.this,
-            unified_processed_at=datetime.now().isoformat(),
-            pipeline_stage='ingestion'
-        )
-        
-        # Process through embeddings pipeline
-        embedded_documents = embeddings_pathway_pipeline.create_embeddings_pipeline(all_documents)
-        
-        # Generate risk alerts
-        risk_alerts = alerts_pathway_pipeline.create_risk_alerts_pipeline(embedded_documents)
-        
-        # Create output sinks
-        self._create_output_sinks(embedded_documents, risk_alerts)
-        
-        logger.info("✅ Unified pipeline created successfully")
-        return embedded_documents, risk_alerts
+        while self.is_running:
+            try:
+                # Fetch data from all sources
+                self._fetch_and_process_data()
+                
+                # Sleep for 5 minutes before next cycle
+                time.sleep(300)  # 5 minutes
+                
+            except Exception as e:
+                logger.error(f"❌ Error in background pipeline: {e}")
+                time.sleep(60)  # Wait 1 minute on error
+    
+    def _fetch_and_process_data(self):
+        """Fetch data from all sources and process through pipelines"""
+        try:
+            # Fetch OFAC data
+            ofac_docs = self._fetch_ofac_data()
+            
+            # Fetch news data
+            news_docs = self._fetch_news_data()
+            
+            # Fetch RSS data
+            rss_docs = self._fetch_rss_data()
+            
+            # Combine all documents
+            all_docs = ofac_docs + news_docs + rss_docs
+            
+            if all_docs:
+                # Process through embeddings and indexing
+                asyncio.run(self._process_documents(all_docs))
+                
+                # Generate alerts
+                alerts = self._generate_alerts(all_docs)
+                
+                # Update stats
+                self.stats['total_documents_processed'] += len(all_docs)
+                self.stats['alerts_generated'] += len(alerts)
+                self.stats['last_update'] = datetime.now().isoformat()
+                
+                logger.info(f"📊 Processed {len(all_docs)} documents, generated {len(alerts)} alerts")
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching and processing data: {e}")
+    
+    def _fetch_ofac_data(self) -> List[Dict]:
+        """Fetch OFAC sanctions data"""
+        try:
+            return ofac_pathway_pipeline.fetch_real_data()
+        except Exception as e:
+            logger.error(f"Error fetching OFAC data: {e}")
+            return []
+    
+    def _fetch_news_data(self) -> List[Dict]:
+        """Fetch news data"""
+        try:
+            return news_pathway_pipeline.fetch_real_data()
+        except Exception as e:
+            logger.error(f"Error fetching news data: {e}")
+            return []
+    
+    def _fetch_rss_data(self) -> List[Dict]:
+        """Fetch RSS data"""
+        try:
+            return rss_pathway_pipeline.fetch_real_data()
+        except Exception as e:
+            logger.error(f"Error fetching RSS data: {e}")
+            return []
+    
+    async def _process_documents(self, documents: List[Dict]):
+        """Process documents through embeddings pipeline"""
+        try:
+            await embeddings_pathway_pipeline.process_documents(documents)
+        except Exception as e:
+            logger.error(f"Error processing documents: {e}")
+    
+    def _generate_alerts(self, documents: List[Dict]) -> List[Dict]:
+        """Generate alerts from documents"""
+        try:
+            return alerts_pathway_pipeline.generate_alerts_from_docs(documents)
+        except Exception as e:
+            logger.error(f"Error generating alerts: {e}")
+            return []
     
     def _create_output_sinks(self, documents_table: pw.Table, alerts_table: pw.Table):
         """Create output sinks for processed data"""

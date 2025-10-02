@@ -6,12 +6,13 @@ import WalletConnect from '../components/WalletConnect';
 import AIAgentChat from '../components/AIAgentChat';
 import NewsFeed from '../components/NewsFeed';
 import WalletRealtimePanel from '../components/WalletRealtimePanel';
+import LiveFeed from '../components/LiveFeed';
+import AlertsPanel from '../components/AlertsPanel';
 
 export default function Home() {
   const [connectedAddress, setConnectedAddress] = useState('');
   const [selectedExample, setSelectedExample] = useState(null);
   const [showChat, setShowChat] = useState(false);
-
   const exampleQuestions = [
     { id: 1, category: 'Risk Assessment', priority: 'high', icon: Shield, description: 'Get a comprehensive risk analysis of your connected wallet', question: 'Analyze my wallet for compliance risks' },
     { id: 2, category: 'Regulatory Updates', priority: 'medium', icon: FileText, description: 'Stay updated with the latest regulatory changes and sanctions', question: 'What are the latest OFAC sanctions?' },
@@ -144,8 +145,9 @@ export default function Home() {
 
             <div className="lg:col-span-1">
               <div className="space-y-6">
+                <LiveFeed />
+                <AlertsPanel />
                 <WalletRealtimePanel walletAddress={connectedAddress} />
-                <NewsFeed />
               </div>
             </div>
           </div>

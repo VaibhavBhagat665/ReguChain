@@ -148,13 +148,55 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Error adding document {doc_id}: {e}")
     
-    def search(self, query: str, k: int = 5) -> List[Tuple[Dict, float]]:
-        """Search for similar documents"""
+    async def search(self, query: str, k: int = 5) -> List[Tuple[Dict, float]]:
+        """Search for similar documents using embeddings"""
         if not self.documents:
             return []
         
-        # For now, return simple text-based search results
-        # TODO: Implement proper embedding search
+        try:
+            # Get query embedding
+            query_embedding = await embeddings_client.embed_text(query)
+            if not query_embedding:
+                # Fallback to keyword search
+                return self._keyword_search(query, k)
+            
+            if faiss and not isinstance(self.index, dict) and self.index.ntotal > 0:
+                # Use FAISS search
+                query_vec = np.array([query_embedding], dtype=np.float32)
+                distances, indices = self.index.search(query_vec, min(k, len(self.documents)))
+                
+                results = []
+                for idx, dist in zip(indices[0], distances[0]):
+                    if idx < len(self.documents) and idx >= 0:
+                        # Convert L2 distance to similarity score (0-1)
+                        similarity = 1.0 / (1.0 + dist)
+                        results.append((self.documents[idx], similarity))
+                return results
+            else:
+                # Use numpy fallback
+                if not self.index.get("vectors"):
+                    return self._keyword_search(query, k)
+                
+                similarities = []
+                for i, vec in enumerate(self.index["vectors"]):
+                    sim = self._cosine_similarity(query_embedding, vec)
+                    similarities.append((i, sim))
+                
+                # Sort by similarity
+                similarities.sort(key=lambda x: x[1], reverse=True)
+                
+                results = []
+                for idx, sim in similarities[:k]:
+                    if idx < len(self.documents):
+                        results.append((self.documents[idx], sim))
+                return results
+                
+        except Exception as e:
+            logger.error(f"Error in vector search: {e}")
+            return self._keyword_search(query, k)
+    
+    def _keyword_search(self, query: str, k: int = 5) -> List[Tuple[Dict, float]]:
+        """Fallback keyword-based search"""
         results = []
         query_lower = query.lower()
         
@@ -165,39 +207,24 @@ class VectorStore:
                 similarity = 0.8  # Mock similarity score
                 results.append((doc, similarity))
         
-        # Return top k results
         return results[:k]
-        
-        if faiss and not isinstance(self.index, dict):
-            # Use FAISS search
-            query_vec = np.array([query_embedding], dtype=np.float32)
-            distances, indices = self.index.search(query_vec, min(k, len(self.documents)))
+    
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors"""
+        try:
+            vec1 = np.array(vec1)
+            vec2 = np.array(vec2)
             
-            results = []
-            for i, (idx, dist) in enumerate(zip(indices[0], distances[0])):
-                if idx < len(self.documents):
-                    # Convert L2 distance to similarity score (0-1)
-                    similarity = 1.0 / (1.0 + dist)
-                    results.append((self.documents[idx], similarity))
-            return results
-        else:
-            # Use numpy fallback
-            if not self.index.get("vectors"):
-                return []
+            dot_product = np.dot(vec1, vec2)
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
             
-            similarities = []
-            for i, vec in enumerate(self.index["vectors"]):
-                sim = cosine_similarity(query_embedding, vec)
-                similarities.append((i, sim))
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
             
-            # Sort by similarity
-            similarities.sort(key=lambda x: x[1], reverse=True)
-            
-            results = []
-            for idx, sim in similarities[:k]:
-                if idx < len(self.documents):
-                    results.append((self.documents[idx], sim))
-            return results
+            return dot_product / (norm1 * norm2)
+        except:
+            return 0.0
     
     def clear(self):
         """Clear the index"""

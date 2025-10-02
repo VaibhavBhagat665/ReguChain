@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Bot, User, Loader, MessageSquare, Brain, Shield, Activity } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { queryAPI } from '../lib/api';
+import EnhancedQueryResults from './EnhancedQueryResults';
 
 export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQuestion }) {
   const [messages, setMessages] = useState([]);
@@ -10,6 +12,7 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const [agentCapabilities, setAgentCapabilities] = useState([]);
+  const [lastQueryResult, setLastQueryResult] = useState(null);
   const messagesEndRef = useRef(null);
 
 
@@ -150,58 +153,39 @@ What would you like to explore first?`,
     sendControllerRef.current = controller;
 
     try {
-      const response = await fetch('/api/agent/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: trimmedMessage,
-          conversation_id: conversationId,
-          wallet_address: walletAddress,
-          context: {
-            timestamp: new Date().toISOString(),
-            user_agent: navigator.userAgent
-          }
-        }),
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response from AI agent');
-      }
-
-      const agentResponse = await response.json();
+      // Use the enhanced query API
+      const agentResponse = await queryAPI(trimmedMessage, walletAddress, conversationId);
       if (!mountedRef.current) return;
       
-      // Update conversation ID from backend response
-      if (agentResponse.conversation_id && agentResponse.conversation_id !== conversationId) {
-        setConversationId(agentResponse.conversation_id);
-      }
+      // Store the enhanced query result
+      setLastQueryResult(agentResponse);
       
       const assistantMessage = {
         id: uuidv4(),
         role: 'assistant',
-        content: agentResponse.message,
+        content: agentResponse.answer || agentResponse.message || 'I received your query but couldn\'t generate a proper response.',
         timestamp: new Date().toISOString(),
         metadata: {
+          risk_score: agentResponse.risk_score,
+          evidence: agentResponse.evidence,
+          alerts: agentResponse.alerts,
+          news: agentResponse.news,
           confidence: agentResponse.confidence,
-          capabilities_used: agentResponse.capabilities_used,
-          risk_assessment: agentResponse.risk_assessment,
-          blockchain_data: agentResponse.blockchain_data,
-          suggested_actions: agentResponse.suggested_actions,
-          follow_up_questions: agentResponse.follow_up_questions
+          suggested_actions: agentResponse.suggested_actions || [],
+          follow_up_questions: agentResponse.follow_up_questions || [],
+          enhanced_result: agentResponse
         }
       };
 
       setMessages(prev => [...prev, assistantMessage]);
 
       // If there's analysis data, pass it to parent component
-      if (agentResponse.risk_assessment || agentResponse.blockchain_data) {
+      if (agentResponse.risk_score !== undefined || agentResponse.evidence) {
         onAnalysisResult && onAnalysisResult({
-          risk_assessment: agentResponse.risk_assessment,
-          blockchain_data: agentResponse.blockchain_data,
-          suggested_actions: agentResponse.suggested_actions
+          risk_score: agentResponse.risk_score,
+          evidence: agentResponse.evidence,
+          alerts: agentResponse.alerts,
+          news: agentResponse.news
         });
       }
 
@@ -213,12 +197,12 @@ What would you like to explore first?`,
       }
       console.error('Error sending message:', error);
 
-      // No mock responses. Provide a transparent error message and guidance.
+      // Provide a transparent error message and guidance.
       if (mountedRef.current) {
         const assistantMessage = {
           id: uuidv4(),
           role: 'assistant',
-          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n- Verify GROQ_API_KEY or OPENROUTER_API_KEY for LLM responses\n- Check /api/realtime/health for service status\n- Review logs for /api/agent/chat errors`,
+          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n✅ **API Status Check:**\n- Backend: http://localhost:8000/api/health\n- OpenRouter API: Check your .env file for OPENROUTER_API_KEY\n- NewsData.io API: Check your .env file for NEWSAPI_KEY\n\n**Error:** ${error.message || 'Connection failed'}\n\n**Troubleshooting:**\n1. Ensure backend is running: \`python -m uvicorn app.main:app --reload\`\n2. Check your .env file has valid API keys\n3. Test connection: \`python test_api_connection.py\``,
           timestamp: new Date().toISOString(),
           metadata: {}
         };
@@ -266,33 +250,35 @@ What would you like to explore first?`,
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg h-96 flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-primary-600" />
-            <h2 className="text-lg font-semibold">ReguChain AI Agent</h2>
-          </div>
-          <div className="flex items-center gap-1">
-            {agentCapabilities.slice(0, 3).map((capability) => {
-              const IconComponent = getCapabilityIcon(capability.name);
-              return (
-                <div
-                  key={capability.name}
-                  className="p-1 bg-primary-50 dark:bg-primary-900/20 rounded"
-                  title={capability.description}
-                >
-                  <IconComponent className="w-3 h-3 text-primary-600" />
-                </div>
-              );
-            })}
+    <div className="space-y-6">
+      {/* Chat Interface */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg h-96 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-primary-600" />
+              <h2 className="text-lg font-semibold">ReguChain AI Agent</h2>
+            </div>
+            <div className="flex items-center gap-1">
+              {agentCapabilities.slice(0, 3).map((capability) => {
+                const IconComponent = getCapabilityIcon(capability.name);
+                return (
+                  <div
+                    key={capability.name}
+                    className="p-1 bg-primary-50 dark:bg-primary-900/20 rounded"
+                    title={capability.description}
+                  >
+                    <IconComponent className="w-3 h-3 text-primary-600" />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -373,6 +359,7 @@ What would you like to explore first?`,
         )}
         
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -426,6 +413,11 @@ What would you like to explore first?`,
           </button>
         </div>
       </div>
+      
+      {/* Enhanced Query Results */}
+      {lastQueryResult && (
+        <EnhancedQueryResults result={lastQueryResult} loading={false} />
+      )}
     </div>
   );
 }

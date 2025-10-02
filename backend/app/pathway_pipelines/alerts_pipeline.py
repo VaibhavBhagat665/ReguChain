@@ -250,6 +250,32 @@ class AlertsPathwayPipeline:
             if alert.get('wallet_address', '').lower() == wallet_lower
         ]
         return sorted(wallet_alerts, key=lambda x: x['timestamp'], reverse=True)[:limit]
+    
+    def generate_alerts_from_docs(self, documents: List[Dict]) -> List[Dict]:
+        """Generate alerts from documents without Pathway"""
+        alerts = []
+        
+        if not documents:
+            return alerts
+        
+        logger.info(f"🔍 Analyzing {len(documents)} documents for risk alerts...")
+        
+        for doc in documents:
+            try:
+                doc_alerts = self._analyze_document_for_alerts(doc)
+                alerts.extend(doc_alerts)
+            except Exception as e:
+                logger.error(f"Error analyzing document {doc.get('id', 'unknown')} for alerts: {e}")
+                continue
+        
+        if alerts:
+            logger.info(f"🚨 Generated {len(alerts)} risk alerts")
+            # Store alerts in history
+            self.alert_history.extend(alerts)
+            # Keep only last 100 alerts
+            self.alert_history = self.alert_history[-100:]
+        
+        return alerts
 
 # Global instance
 alerts_pathway_pipeline = AlertsPathwayPipeline()

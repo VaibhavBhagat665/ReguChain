@@ -165,6 +165,98 @@ class OFACPathwayPipeline:
         )
         
         return unified_ofac
+    
+    def fetch_real_data(self) -> List[Dict]:
+        """Fetch real OFAC data without Pathway connectors"""
+        documents = []
+        
+        try:
+            # Fetch SDN data
+            logger.info("🔍 Fetching OFAC SDN data...")
+            response = requests.get(self.sdn_url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse CSV
+            csv_reader = csv.DictReader(response.text.splitlines())
+            
+            for row in csv_reader:
+                content_text = f"OFAC SDN Entry: {row.get('name', '')} - {row.get('title', '')}"
+                doc = {
+                    'id': f"ofac_sdn_{row.get('ent_num', '')}",
+                    'source': 'OFAC_SDN',
+                    'content': content_text,
+                    'text': content_text,  # For compatibility
+                    'timestamp': datetime.now().isoformat(),
+                    'link': self.sdn_url,
+                    'type': 'sanction',
+                    'metadata': {
+                        'entity_number': row.get('ent_num', ''),
+                        'name': row.get('name', ''),
+                        'title': row.get('title', ''),
+                        'address': row.get('address', ''),
+                        'city': row.get('city', ''),
+                        'country': row.get('country', ''),
+                        'list_type': row.get('list', ''),
+                        'program': row.get('program', ''),
+                        'risk_level': 'high',
+                        'source': 'OFAC_SDN'
+                    }
+                }
+                documents.append(doc)
+            
+            logger.info(f"✅ Fetched {len(documents)} OFAC SDN entries")
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching OFAC SDN: {e}")
+        
+        try:
+            # Fetch Consolidated data
+            logger.info("🔍 Fetching OFAC Consolidated data...")
+            response = requests.get(self.consolidated_url, timeout=30)
+            response.raise_for_status()
+            
+            # Parse XML
+            root = ET.fromstring(response.text)
+            
+            for entity in root.findall('.//sdnEntry'):
+                uid = entity.get('uid', '')
+                first_name = entity.findtext('.//firstName', '')
+                last_name = entity.findtext('.//lastName', '')
+                name = f"{first_name} {last_name}".strip()
+                
+                # Get addresses
+                addresses = []
+                for address in entity.findall('.//address'):
+                    addr_text = address.findtext('.//address1', '')
+                    city = address.findtext('.//city', '')
+                    country = address.findtext('.//country', '')
+                    addresses.append(f"{addr_text}, {city}, {country}")
+                
+                doc = {
+                    'id': f"ofac_consolidated_{uid}",
+                    'source': 'OFAC_CONSOLIDATED',
+                    'content': f"OFAC Consolidated Entry: {name} - Addresses: {'; '.join(addresses)}",
+                    'timestamp': datetime.now().isoformat(),
+                    'link': self.consolidated_url,
+                    'type': 'sanction',
+                    'metadata': {
+                        'uid': uid,
+                        'name': name,
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'addresses': addresses,
+                        'risk_level': 'high',
+                        'source': 'OFAC_CONSOLIDATED'
+                    }
+                }
+                documents.append(doc)
+            
+            logger.info(f"✅ Fetched {len(documents) - len([d for d in documents if d['source'] == 'OFAC_SDN'])} OFAC Consolidated entries")
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching OFAC Consolidated: {e}")
+        
+        return documents
 
 # Global instance
 ofac_pathway_pipeline = OFACPathwayPipeline()

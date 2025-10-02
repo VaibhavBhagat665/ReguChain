@@ -139,6 +139,64 @@ class EmbeddingsPathwayPipeline:
         ).flatten(pw.this.stats_data)
         
         return index_stats
+    
+    async def process_documents(self, documents: List[Dict]):
+        """Process documents through embeddings and indexing without Pathway"""
+        if not documents:
+            return
+        
+        logger.info(f"🔄 Processing {len(documents)} documents for embeddings...")
+        
+        # Process in batches
+        batch_size = 10
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            
+            try:
+                # Extract texts for embedding
+                texts = [doc.get('content', '') for doc in batch]
+                
+                # Generate embeddings using OpenRouter
+                embeddings = await embeddings_client.embed_texts(texts)
+                
+                if not embeddings:
+                    logger.error(f"Failed to generate embeddings for batch {i//batch_size + 1}")
+                    continue
+                
+                # Process each document with its embedding
+                for doc, embedding in zip(batch, embeddings):
+                    try:
+                        doc_id = doc.get('id', '')
+                        
+                        # Skip if already processed
+                        if doc_id in self.processed_docs:
+                            continue
+                        
+                        # Store in vector store
+                        vector_store.add_document(
+                            doc_id=doc_id,
+                            content=doc.get('content', ''),
+                            embedding=embedding,
+                            metadata=doc.get('metadata', {})
+                        )
+                        
+                        # Store in database
+                        await database.store_document(doc)
+                        
+                        # Mark as processed
+                        self.processed_docs.add(doc_id)
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing document {doc.get('id', 'unknown')}: {e}")
+                        continue
+                
+                logger.info(f"✅ Processed batch {i//batch_size + 1}/{(len(documents) + batch_size - 1)//batch_size}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error processing batch {i//batch_size + 1}: {e}")
+                continue
+        
+        logger.info(f"🎯 Successfully processed {len(documents)} documents with embeddings")
 
 # Global instance
 embeddings_pathway_pipeline = EmbeddingsPathwayPipeline()

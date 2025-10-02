@@ -142,6 +142,81 @@ class RSSPathwayPipeline:
             return 'medium'
         else:
             return 'low'
+    
+    def fetch_real_data(self) -> List[Dict]:
+        """Fetch real RSS data without Pathway connectors"""
+        all_documents = []
+        
+        for source, url in self.feeds.items():
+            if not url:
+                continue
+                
+            try:
+                logger.info(f"🔍 Fetching {source} RSS feed...")
+                
+                # Fetch RSS feed
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                
+                # Parse RSS
+                feed = feedparser.parse(response.text)
+                
+                for entry in feed.entries:
+                    # Create unique ID
+                    item_id = f"{source.lower()}_{hash(entry.link)}"
+                    
+                    # Skip if already seen
+                    if item_id in self.seen_items:
+                        continue
+                    
+                    self.seen_items.add(item_id)
+                    
+                    # Extract content
+                    title = entry.get('title', '')
+                    summary = entry.get('summary', '')
+                    link = entry.get('link', '')
+                    published = entry.get('published', '')
+                    
+                    # Parse published date
+                    try:
+                        if published:
+                            pub_date = datetime.strptime(published, '%a, %d %b %Y %H:%M:%S %Z')
+                        else:
+                            pub_date = datetime.now()
+                    except:
+                        pub_date = datetime.now()
+                    
+                    # Assess risk level
+                    risk_level = self._assess_risk_level(title, summary)
+                    
+                    content_text = f"{source} Regulatory Update: {title} - {summary}"
+                    doc = {
+                        'id': item_id,
+                        'source': f"{source}_RSS",
+                        'content': content_text,
+                        'text': content_text,  # For compatibility
+                        'timestamp': datetime.now().isoformat(),
+                        'link': link,
+                        'type': 'regulatory_update',
+                        'metadata': {
+                            'title': title,
+                            'summary': summary,
+                            'published': pub_date.isoformat(),
+                            'category': 'regulatory_update',
+                            'risk_level': risk_level,
+                            'source': f"{source}_RSS"
+                        }
+                    }
+                    all_documents.append(doc)
+                
+                logger.info(f"✅ Fetched {len([d for d in all_documents if d['source'].startswith(source)])} new items from {source}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error fetching {source} RSS feed: {e}")
+                continue
+        
+        logger.info(f"🎯 Total RSS documents: {len(all_documents)}")
+        return all_documents
 
 # Global instance
 rss_pathway_pipeline = RSSPathwayPipeline()

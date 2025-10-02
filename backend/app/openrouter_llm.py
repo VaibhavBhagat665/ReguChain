@@ -68,16 +68,18 @@ class OpenRouterLLMClient:
                     data = await response.json()
             
             # Extract response
+            logger.info(f"OpenRouter response data: {json.dumps(data, indent=2)}")
+            
             choices = data.get('choices', [])
             if not choices:
-                logger.error("No choices in OpenRouter response")
+                logger.error(f"No choices in OpenRouter response. Full response: {data}")
                 return "No response generated"
             
             message = choices[0].get('message', {})
             content = message.get('content', '').strip()
             
             if not content:
-                logger.error("Empty content in OpenRouter response")
+                logger.error(f"Empty content in OpenRouter response. Message: {message}, Full response: {data}")
                 return "Empty response generated"
             
             logger.info(f"✅ Generated response ({len(content)} chars)")

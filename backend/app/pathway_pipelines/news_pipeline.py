@@ -188,6 +188,89 @@ class NewsPathwayPipeline:
             return 'positive'
         else:
             return 'neutral'
+    
+    def fetch_real_data(self) -> List[Dict]:
+        """Fetch real news data without Pathway connectors"""
+        if not self.api_key:
+            logger.warning("⚠️ NewsAPI key not configured, skipping news ingestion")
+            return []
+        
+        all_documents = []
+        
+        for query in self.queries:
+            try:
+                logger.info(f"🔍 Fetching news for query: {query}")
+                
+                params = {
+                    'apikey': self.api_key,
+                    'q': query,
+                    'language': 'en',
+                    'category': 'business,politics',
+                    'size': 10,
+                    'timeframe': '24h'
+                }
+                
+                response = requests.get(self.api_endpoint, params=params, timeout=30)
+                response.raise_for_status()
+                
+                data = response.json()
+                articles = data.get('results', [])
+                
+                for article in articles:
+                    # Create unique ID
+                    article_id = f"news_{hash(article.get('link', ''))}"
+                    
+                    # Skip if already seen
+                    if article_id in self.seen_articles:
+                        continue
+                    
+                    self.seen_articles.add(article_id)
+                    
+                    title = article.get('title', '')
+                    description = article.get('description', '')
+                    content = article.get('content', '')
+                    link = article.get('link', '')
+                    pub_date = article.get('pubDate', '')
+                    source = article.get('source_id', '')
+                    
+                    # Combine content
+                    full_content = f"{title} {description} {content}".strip()
+                    
+                    # Assess risk and sentiment
+                    risk_level = self._assess_risk_level(full_content)
+                    sentiment = self._assess_sentiment(full_content)
+                    
+                    content_text = f"Regulatory News: {full_content}"
+                    doc = {
+                        'id': article_id,
+                        'source': 'NEWS_API',
+                        'content': content_text,
+                        'text': content_text,  # For compatibility
+                        'timestamp': datetime.now().isoformat(),
+                        'link': link,
+                        'type': 'regulatory_news',
+                        'metadata': {
+                            'title': title,
+                            'description': description,
+                            'published': pub_date,
+                            'news_source': source,
+                            'query': query,
+                            'category': 'regulatory_news',
+                            'risk_level': risk_level,
+                            'sentiment': sentiment,
+                            'source': 'NEWS_API'
+                        }
+                    }
+                    all_documents.append(doc)
+                
+                logger.info(f"✅ Fetched {len([d for d in all_documents if d['metadata']['query'] == query])} new articles for '{query}'")
+                
+            except Exception as e:
+                logger.error(f"❌ Error fetching news for '{query}': {e}")
+                continue
+        
+        logger.info(f"🎯 Total news documents: {len(all_documents)}")
+        return all_documents
 
 # Global instance
 news_pathway_pipeline = NewsPathwayPipeline()

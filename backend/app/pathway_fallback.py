@@ -324,11 +324,21 @@ class PathwayFallbackManager:
                 # Generate embedding and store in vector store
                 embedding = await embeddings_client.embed_text(doc['text'])
                 if embedding:
+                    # Prepare full metadata including source and link
+                    full_metadata = doc['metadata'].copy()
+                    full_metadata.update({
+                        'source': doc['source'],
+                        'link': doc.get('link', ''),
+                        'timestamp': doc.get('timestamp', ''),
+                        'type': doc.get('type', 'document'),
+                        'id': doc['id']
+                    })
+                    
                     vector_store.add_document(
                         doc_id=doc['id'],
                         content=doc['text'],
                         embedding=embedding,
-                        metadata=doc['metadata']
+                        metadata=full_metadata
                     )
                 
                 # Generate alerts

@@ -32,12 +32,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting ReguChain Pathway-Powered Backend...")
     
-    # Start Pathway fallback pipelines
+    # Start Pathway pipelines
     try:
         await pathway_fallback_manager.start_all_pipelines()
-        logger.info("✅ Pathway fallback pipelines started successfully")
+        logger.info("✅ Pathway pipelines started successfully")
         logger.info("📊 Real-time ingestion: OFAC, RSS, News, Blockchain")
         logger.info("🤖 AI Agent: OpenRouter + Mistral-7B + RAG")
+        logger.info("🔍 Vector Search: FAISS + OpenRouter Embeddings")
+        logger.info("🚨 Alerts: Real-time compliance monitoring")
     except Exception as e:
         logger.error(f"❌ Error starting Pathway pipelines: {e}")
     
@@ -76,7 +78,7 @@ async def chat_with_agent(request: AgentRequest):
             pathway_fallback_manager.add_target_wallet(request.wallet_address)
         
         # Search for relevant documents
-        relevant_docs = vector_store.search(request.message, k=10)
+        relevant_docs = await vector_store.search(request.message, k=10)
         
         # Prepare context for LLM
         context_docs = []
@@ -87,34 +89,47 @@ async def chat_with_agent(request: AgentRequest):
                 doc = doc_tuple
                 similarity = 1.0
             
+            # Extract metadata properly
+            metadata = doc.get('metadata', {})
             context_docs.append({
-                'source': doc.get('source', 'unknown'),
+                'source': metadata.get('source', doc.get('source', 'unknown')),
                 'content': doc.get('content', '')[:500],
-                'timestamp': doc.get('timestamp', ''),
+                'timestamp': metadata.get('timestamp', doc.get('timestamp', '')),
+                'link': metadata.get('link', ''),
+                'title': metadata.get('title', ''),
+                'type': metadata.get('type', 'document'),
                 'similarity': similarity
             })
         
-        # Build LLM prompt
+        # Build concise LLM prompt
+        evidence_text = ""
+        if context_docs:
+            evidence_items = []
+            for i, doc in enumerate(context_docs[:3]):  # Limit to top 3 most relevant
+                source = doc['source']
+                title = doc.get('title', 'No title')
+                link = doc.get('link', '')
+                content = doc['content'][:200] + "..." if len(doc['content']) > 200 else doc['content']
+                
+                evidence_items.append(f"[{i+1}] {source}: {title} - {content}")
+                if link:
+                    evidence_items.append(f"    Link: {link}")
+            
+            evidence_text = "\n".join(evidence_items)
+        
         messages = [
             {
                 "role": "system",
-                "content": f"""You are ReguChain AI, an expert in blockchain regulatory compliance.
+                "content": f"""You are ReguChain AI, a blockchain regulatory compliance expert with real-time data access.
 
-You have access to real-time regulatory intelligence including:
-- OFAC sanctions data
-- SEC, CFTC, FINRA regulatory updates  
-- Real-time news feeds
-- Blockchain transaction data
+AVAILABLE EVIDENCE:
+{evidence_text}
 
 INSTRUCTIONS:
-1. Provide helpful, accurate compliance guidance
-2. Cite specific evidence sources when available
-3. Be conversational and professional
-4. If asked about wallet analysis, provide risk assessment
-
-EVIDENCE DOCUMENTS:
-{chr(10).join([f"[{i+1}] {doc['source']}: {doc['content']}" for i, doc in enumerate(context_docs)])}
-"""
+- Use the evidence above to provide specific, current regulatory guidance
+- Cite sources with links when available
+- Be concise and actionable
+- Focus on compliance risks and recommendations"""
             },
             {
                 "role": "user", 
@@ -125,8 +140,23 @@ EVIDENCE DOCUMENTS:
         # Generate LLM response
         llm_response = await llm_client.generate_response(messages, max_tokens=800)
         
-        if not llm_response:
-            llm_response = "I'm having trouble connecting to the AI service. Please check your OpenRouter API key configuration."
+        if not llm_response or llm_response.strip() == "Empty response generated":
+            # Provide fallback response with real data
+            if context_docs:
+                fallback_response = "Based on the latest regulatory data:\n\n"
+                for i, doc in enumerate(context_docs[:2]):
+                    source = doc['source']
+                    title = doc.get('title', 'Regulatory Update')
+                    link = doc.get('link', '')
+                    fallback_response += f"• **{source}**: {title}\n"
+                    if link:
+                        fallback_response += f"  📎 Read more: {link}\n"
+                    fallback_response += "\n"
+                
+                fallback_response += "For the most current compliance guidance, please review the sources above."
+                llm_response = fallback_response
+            else:
+                llm_response = "I'm having trouble connecting to the AI service. Please check your OpenRouter API key configuration and ensure the backend pipelines are running."
         
         # Calculate risk assessment if wallet provided
         risk_assessment = None
@@ -142,16 +172,20 @@ EVIDENCE DOCUMENTS:
                 "factors": ["Regulatory data analysis", "Real-time monitoring"]
             }
         
-        response = AgentResponse(
-            message=llm_response,
-            conversation_id=request.conversation_id or f"conv_{datetime.now().timestamp()}",
-            risk_assessment=risk_assessment,
-            blockchain_data=None,
-            suggested_actions=[],
-            confidence=0.85,
-            capabilities_used=["pathway_rag", "openrouter_llm", "vector_search"],
-            follow_up_questions=[]
-        )
+        # Prepare response with context documents
+        response_data = {
+            "message": llm_response,
+            "conversation_id": request.conversation_id or f"conv_{datetime.now().timestamp()}",
+            "risk_assessment": risk_assessment,
+            "blockchain_data": None,
+            "suggested_actions": [],
+            "confidence": 0.85,
+            "capabilities_used": ["pathway_rag", "openrouter_llm", "vector_search"],
+            "follow_up_questions": [],
+            "context_documents": context_docs  # Include context documents for frontend
+        }
+        
+        response = AgentResponse(**response_data)
         
         return response
         
@@ -168,7 +202,7 @@ async def analyze_wallet(request: WalletAnalysisRequest):
         
         # Search for wallet-related documents
         wallet_query = f"wallet address {request.address} sanctions compliance"
-        relevant_docs = vector_store.search(wallet_query, k=15)
+        relevant_docs = await vector_store.search(wallet_query, k=15)
         
         # Calculate risk score based on findings
         risk_score = 20  # Base risk
@@ -292,42 +326,62 @@ async def get_conversation(conversation_id: str):
     )
 
 
-@app.get("/api/status", response_model=StatusResponse)
+@app.get("/api/status")
 async def get_status():
-    """Get system status and recent updates"""
+    """Get system status and recent updates with live feed data"""
     try:
         # Get Pathway system stats
         pipeline_stats = pathway_fallback_manager.get_pipeline_stats()
         
-        # Mock recent updates from pipeline data
-        last_updates = [
-            StatusUpdate(
-                id=f"update_{i}",
-                source="PATHWAY_PIPELINE",
-                text=f"Processed {pipeline_stats.get('total_documents_processed', 0)} documents from regulatory sources",
-                timestamp=pipeline_stats.get('last_update', datetime.utcnow().isoformat()),
-                link=""
-            )
-            for i in range(3)
-        ]
+        # Get recent documents from vector store (last 10 ingested)
+        recent_docs = []
+        if vector_store.documents:
+            # Get last 10 documents sorted by timestamp
+            sorted_docs = sorted(
+                vector_store.documents, 
+                key=lambda x: x.get('timestamp', ''), 
+                reverse=True
+            )[:10]
+            
+            for doc in sorted_docs:
+                metadata = doc.get('metadata', {})
+                recent_docs.append({
+                    'id': metadata.get('id', doc.get('id', '')),
+                    'source': metadata.get('source', doc.get('source', 'unknown')),
+                    'title': metadata.get('title', doc.get('content', '')[:100] + "..."),
+                    'link': metadata.get('link', ''),
+                    'timestamp': metadata.get('timestamp', doc.get('timestamp', '')),
+                    'type': metadata.get('type', doc.get('type', 'document')),
+                    'risk_level': metadata.get('risk_level', 'low'),
+                    'text': doc.get('content', '')[:200] + "..." if len(doc.get('content', '')) > 200 else doc.get('content', '')
+                })
         
         # Get vector store stats
         index_stats = vector_store.get_stats()
         
-        # Get agent capabilities
-        capabilities = await get_agent_capabilities()
+        # Get recent alerts
+        recent_alerts = pathway_fallback_manager.get_recent_alerts(5)
         
-        return StatusResponse(
-            last_updates=last_updates,
-            total_documents=pipeline_stats.get('total_documents_processed', 0),
-            index_stats={
+        return {
+            "status": "active" if pipeline_stats.get('is_running', False) else "inactive",
+            "last_updates": recent_docs,
+            "total_documents": pipeline_stats.get('total_documents_processed', len(vector_store.documents)),
+            "index_stats": {
                 **index_stats,
                 'pipelines_running': pipeline_stats.get('is_running', False),
-                'alerts_generated': pipeline_stats.get('alerts_generated', 0)
+                'alerts_generated': pipeline_stats.get('alerts_generated', len(recent_alerts))
             },
-            agent_capabilities=capabilities,
-            active_conversations=0
-        )
+            "recent_alerts": recent_alerts,
+            "pipelines": {
+                "ofac": "active" if pipeline_stats.get('is_running') else "inactive",
+                "news": "active" if pipeline_stats.get('is_running') else "inactive",
+                "rss": "active" if pipeline_stats.get('is_running') else "inactive",
+                "blockchain": "active" if pipeline_stats.get('is_running') else "inactive",
+                "embeddings": "active" if pipeline_stats.get('is_running') else "inactive",
+                "alerts": "active" if pipeline_stats.get('is_running') else "inactive"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -378,20 +432,18 @@ async def simulate_ingestion(doc_type: str, content: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/query")
-async def rag_query(question: str, wallet_address: str = None):
-    """Direct RAG query endpoint using Pathway system"""
+async def rag_query(question: str, target: str = None):
+    """Enhanced RAG query endpoint with Mistral LLM and real-time data"""
     try:
-        # Add wallet to monitoring if provided
-        if wallet_address:
-            pathway_fallback_manager.add_target_wallet(wallet_address)
+        # Add target to monitoring if provided
+        if target:
+            pathway_fallback_manager.add_target_wallet(target)
         
-        # Search for relevant documents
-        relevant_docs = vector_store.search(question, k=10)
+        # Search for relevant documents using embeddings
+        relevant_docs = await vector_store.search(question, k=10)
         
-        # Prepare context
-        context_docs = []
-        onchain_matches = []
-        
+        # Prepare evidence documents
+        evidence_docs = []
         for doc_tuple in relevant_docs:
             if isinstance(doc_tuple, tuple):
                 doc, similarity = doc_tuple
@@ -399,61 +451,61 @@ async def rag_query(question: str, wallet_address: str = None):
                 doc = doc_tuple
                 similarity = 1.0
             
-            context_docs.append({
+            evidence_docs.append({
                 'source': doc.get('source', 'unknown'),
-                'content': doc.get('content', '')[:500],
+                'snippet': doc.get('content', '')[:300] + "..." if len(doc.get('content', '')) > 300 else doc.get('content', ''),
+                'link': doc.get('link', ''),
                 'timestamp': doc.get('timestamp', ''),
-                'similarity': similarity
+                'similarity': similarity,
+                'metadata': doc.get('metadata', {})
             })
-            
-            # Check for onchain matches
-            if wallet_address and wallet_address.lower() in doc.get('content', '').lower():
-                onchain_matches.append({
-                    'wallet_address': wallet_address,
-                    'source': doc.get('source', 'unknown'),
-                    'content': doc.get('content', '')[:200]
+        
+        # Use OpenRouter LLM for contextual response
+        llm_result = await llm_client.query_with_context(
+            question=f"Query: {question}" + (f" Target: {target}" if target else ""),
+            context_documents=relevant_docs,
+            conversation_history=None
+        )
+        
+        if not llm_result.get('success'):
+            return {
+                "answer": "Failed to generate response. Please check your OpenRouter API configuration.",
+                "risk_score": 0,
+                "evidence": evidence_docs,
+                "alerts": [],
+                "news": []
+            }
+        
+        # Get recent alerts
+        recent_alerts = pathway_fallback_manager.get_recent_alerts(5)
+        formatted_alerts = []
+        for alert in recent_alerts:
+            formatted_alerts.append({
+                'type': alert.get('type', 'UNKNOWN'),
+                'detail': alert.get('description', ''),
+                'timestamp': alert.get('timestamp', '')
+            })
+        
+        # Get recent news from evidence
+        news_items = []
+        for doc in evidence_docs:
+            if doc['source'] == 'NEWS_API':
+                news_items.append({
+                    'title': doc['metadata'].get('title', 'News Update'),
+                    'url': doc['link'],
+                    'timestamp': doc['timestamp']
                 })
         
-        # Build LLM prompt
-        messages = [
-            {
-                "role": "system",
-                "content": f"""You are ReguChain AI, an expert in blockchain regulatory compliance.
-
-EVIDENCE DOCUMENTS:
-{chr(10).join([f"[{i+1}] {doc['source']}: {doc['content']}" for i, doc in enumerate(context_docs)])}
-
-Provide helpful compliance guidance based on the evidence above."""
-            },
-            {
-                "role": "user", 
-                "content": question
-            }
-        ]
-        
-        # Generate LLM response
-        llm_response = await llm_client.generate_response(messages, max_tokens=800)
-        
-        if not llm_response:
-            llm_response = "I'm having trouble connecting to the AI service. Please check your OpenRouter API key configuration."
-        
-        # Calculate risk score
-        risk_score = 20  # Base risk
-        if wallet_address and onchain_matches:
-            risk_score += 30 * len(onchain_matches)
-        
         return {
-            "answer": llm_response,
-            "risk_score": min(100, risk_score),
-            "risk_verdict": "High" if risk_score >= 70 else "Medium" if risk_score >= 40 else "Safe",
-            "evidence": context_docs,
-            "onchain_matches": onchain_matches,
-            "model_used": "mistralai/mistral-7b-instruct",
-            "processing_time_ms": 1500
+            "answer": llm_result.get('response', ''),
+            "risk_score": llm_result.get('risk_score', 0),
+            "evidence": evidence_docs,
+            "alerts": formatted_alerts,
+            "news": news_items[:5]  # Top 5 news items
         }
         
     except Exception as e:
-        logger.error(f"Error in RAG query: {e}")
+        logger.error(f"Error in enhanced RAG query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Add Pathway-specific endpoints
