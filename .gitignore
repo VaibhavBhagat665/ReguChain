@@ -23,6 +23,12 @@ build/
 out/
 coverage/
 
+# --- Next.js ---
+.next/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
 # --- Environment / Config ---
 .env
 .env.local
