@@ -23,7 +23,7 @@ export default function NewsFeed() {
         let items = articles.map((a, idx) => ({
           id: a.id || `a-${idx}`,
           title: a.title,
-          source: a.source || 'Unknown',
+          source: a.source?.name || a.source || 'Unknown Source',
           timestamp: a.published_at || new Date().toISOString(),
           snippet: a.description || a.content || '',
           link: a.verification_url || a.url || '#',
@@ -35,7 +35,7 @@ export default function NewsFeed() {
           items = headlines.map((a, idx) => ({
             id: a.id || `h-${idx}`,
             title: a.title,
-            source: a.source || 'Unknown',
+            source: a.source?.name || a.source || 'Unknown Source',
             timestamp: a.published_at || new Date().toISOString(),
             snippet: a.description || a.content || '',
             link: a.url || '#',

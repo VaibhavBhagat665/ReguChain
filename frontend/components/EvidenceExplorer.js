@@ -62,8 +62,13 @@ export default function EvidenceExplorer({ evidence = [], onchainMatches = [], a
                     )}
                     <FileText className="w-4 h-4 text-primary-600" />
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {item.source}
+                      {item.source || 'Unknown Source'}
                     </span>
+                    {item.title && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        - {item.title}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <Clock className="w-3 h-3" />
@@ -73,20 +78,30 @@ export default function EvidenceExplorer({ evidence = [], onchainMatches = [], a
                 
                 {expandedItems.has(index) && (
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      {item.snippet}
-                    </p>
-                    {item.link && (
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary-500 hover:text-primary-600"
-                      >
-                        <Link className="w-3 h-3" />
-                        View source
-                      </a>
+                    {item.title && (
+                      <h4 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
+                        {item.title}
+                      </h4>
                     )}
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                      {item.content || item.snippet || 'No content available'}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">
+                        Source: {item.source || 'Unknown Source'}
+                      </span>
+                      {item.link && (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary-500 hover:text-primary-600 font-medium"
+                        >
+                          <Link className="w-3 h-3" />
+                          Read Full Article
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

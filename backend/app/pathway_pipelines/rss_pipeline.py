@@ -73,9 +73,17 @@ class RSSPathwayPipeline:
                         # Assess risk level
                         risk_level = self._assess_risk_level(title, summary)
                         
+                        # Map source to friendly names
+                        source_names = {
+                            'SEC': 'Securities and Exchange Commission',
+                            'CFTC': 'Commodity Futures Trading Commission', 
+                            'FINRA': 'Financial Industry Regulatory Authority'
+                        }
+                        source_display = source_names.get(source, source)
+                        
                         doc = {
                             'id': item_id,
-                            'source': f"{source}_RSS",
+                            'source': source_display,
                             'text': f"{source} Regulatory Update: {title} - {summary}",
                             'timestamp': datetime.now().isoformat(),
                             'link': link,
@@ -85,12 +93,13 @@ class RSSPathwayPipeline:
                                 'summary': summary,
                                 'published': pub_date.isoformat(),
                                 'category': 'regulatory_update',
-                                'risk_level': risk_level
+                                'risk_level': risk_level,
+                                'source_agency': source
                             }
                         }
                         all_documents.append(doc)
                     
-                    logger.info(f"✅ Fetched {len([d for d in all_documents if d['source'].startswith(source)])} new items from {source}")
+                    logger.info(f"✅ Fetched {len([d for d in all_documents if d['metadata'].get('source_agency') == source])} new items from {source}")
                     
                 except Exception as e:
                     logger.error(f"❌ Error fetching {source} RSS feed: {e}")

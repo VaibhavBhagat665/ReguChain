@@ -271,7 +271,7 @@ export const fetchRealtimeNews = async (query = 'cryptocurrency OR blockchain OR
     
     // Filter for news items
     const newsItems = lastUpdates
-      .filter(item => item.source === 'NEWS_API' || item.type === 'regulatory_news')
+      .filter(item => item.type === 'regulatory_news' || item.source?.includes('Reuters') || item.source?.includes('Bloomberg') || item.source?.includes('Commission'))
       .map(item => ({
         id: item.id,
         title: item.title,

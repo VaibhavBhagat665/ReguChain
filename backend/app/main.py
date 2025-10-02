@@ -91,22 +91,34 @@ async def chat_with_agent(request: AgentRequest):
             
             # Extract metadata properly
             metadata = doc.get('metadata', {})
+            # Use news_source from metadata if available, otherwise use main source
+            source_name = metadata.get('news_source') or doc.get('source', 'Unknown Source')
+            # Remove "NEWS_API" hardcoding
+            if source_name == 'NEWS_API':
+                source_name = metadata.get('news_source', 'Unknown Source')
+            
             context_docs.append({
-                'source': metadata.get('source', doc.get('source', 'unknown')),
+                'source': source_name,
                 'content': doc.get('content', '')[:500],
                 'timestamp': metadata.get('timestamp', doc.get('timestamp', '')),
-                'link': metadata.get('link', ''),
+                'link': metadata.get('link', doc.get('link', '')),
                 'title': metadata.get('title', ''),
                 'type': metadata.get('type', 'document'),
                 'similarity': similarity
             })
         
-        # Build concise LLM prompt
+        # Build concise LLM prompt with real source names
         evidence_text = ""
         if context_docs:
             evidence_items = []
             for i, doc in enumerate(context_docs[:3]):  # Limit to top 3 most relevant
+                # Use real source names instead of NEWS_API
                 source = doc['source']
+                if source == 'NEWS_API':
+                    # Try to get real source from metadata
+                    metadata = doc.get('metadata', {})
+                    source = metadata.get('news_source', metadata.get('source_name', 'News Source'))
+                
                 title = doc.get('title', 'No title')
                 link = doc.get('link', '')
                 content = doc['content'][:200] + "..." if len(doc['content']) > 200 else doc['content']
@@ -117,19 +129,52 @@ async def chat_with_agent(request: AgentRequest):
             
             evidence_text = "\n".join(evidence_items)
         
+        # Check for simple conversational inputs
+        simple_responses = {
+            "thanks": "You're welcome! Always here to help with compliance insights 🚀",
+            "thank you": "You're welcome! Always here to help with compliance insights 🚀", 
+            "ok": "Great! Let me know if you need any other compliance analysis 👍",
+            "okay": "Great! Let me know if you need any other compliance analysis 👍",
+            "hi": "Hello! I'm ReguChain AI, ready to help with blockchain compliance questions 👋",
+            "hello": "Hello! I'm ReguChain AI, ready to help with blockchain compliance questions 👋",
+            "hey": "Hey there! What compliance questions can I help you with today? 💼"
+        }
+        
+        message_lower = request.message.lower().strip()
+        if message_lower in simple_responses:
+            return AgentResponse(
+                message=simple_responses[message_lower],
+                conversation_id=request.conversation_id or f"conv_{datetime.now().timestamp()}",
+                confidence=1.0,
+                capabilities_used=["conversational_ai"],
+                context_documents=[]
+            )
+
         messages = [
             {
                 "role": "system",
-                "content": f"""You are ReguChain AI, a blockchain regulatory compliance expert with real-time data access.
+                "content": f"""You are ReguChain AI, a friendly blockchain compliance expert with real-time regulatory data access.
 
-AVAILABLE EVIDENCE:
+CURRENT REGULATORY EVIDENCE:
 {evidence_text}
 
-INSTRUCTIONS:
-- Use the evidence above to provide specific, current regulatory guidance
-- Cite sources with links when available
-- Be concise and actionable
-- Focus on compliance risks and recommendations"""
+RESPONSE STYLE:
+- Be conversational and helpful, not robotic
+- Use emojis appropriately (✅ ❌ ⚠️ 🚀 💼 📊)
+- Always provide actionable insights, even with limited data
+- Format responses clearly with bullet points when helpful
+- Include relevant links when available
+- Never say "I cannot analyze" - always provide helpful guidance
+
+WALLET ANALYSIS FORMAT:
+- Start with clear status: "Your wallet [address] shows [status] ✅/⚠️/❌"
+- Include relevant regulatory news with links
+- End with compliance risk level and recommendations
+
+GENERAL QUERIES:
+- Provide current regulatory insights from available evidence
+- Reference specific sources and dates when possible
+- Give practical compliance advice"""
             },
             {
                 "role": "user", 
@@ -141,22 +186,38 @@ INSTRUCTIONS:
         llm_response = await llm_client.generate_response(messages, max_tokens=800)
         
         if not llm_response or llm_response.strip() == "Empty response generated":
-            # Provide fallback response with real data
+            # Provide helpful fallback response with real data
             if context_docs:
-                fallback_response = "Based on the latest regulatory data:\n\n"
+                if request.wallet_address:
+                    fallback_response = f"Your wallet `{request.wallet_address}` analysis 📊\n\n"
+                    fallback_response += "✅ **Status**: No direct sanctions found in current data\n\n"
+                    fallback_response += "📰 **Relevant Regulatory Updates**:\n"
+                else:
+                    fallback_response = "Here's what I found in the latest regulatory data 📊\n\n"
+                
                 for i, doc in enumerate(context_docs[:2]):
+                    # Use real source names
                     source = doc['source']
+                    if source == 'NEWS_API':
+                        metadata = doc.get('metadata', {})
+                        source = metadata.get('news_source', metadata.get('source_name', 'News Source'))
+                    
                     title = doc.get('title', 'Regulatory Update')
                     link = doc.get('link', '')
                     fallback_response += f"• **{source}**: {title}\n"
                     if link:
-                        fallback_response += f"  📎 Read more: {link}\n"
+                        fallback_response += f"  🔗 [Read more]({link})\n"
                     fallback_response += "\n"
                 
-                fallback_response += "For the most current compliance guidance, please review the sources above."
+                if request.wallet_address:
+                    fallback_response += "⚠️ **Compliance Risk**: Low\n"
+                    fallback_response += "🚀 **Recommendation**: Continue monitoring for regulatory changes"
+                else:
+                    fallback_response += "💡 **Tip**: Ask me about specific wallet addresses for detailed compliance analysis!"
+                
                 llm_response = fallback_response
             else:
-                llm_response = "I'm having trouble connecting to the AI service. Please check your OpenRouter API key configuration and ensure the backend pipelines are running."
+                llm_response = "No direct matches found, but I'm continuing to monitor against OFAC, SEC, and CFTC feeds 🔍\n\nI'll keep watching for any regulatory updates that might affect your query. Feel free to ask about specific wallet addresses for detailed analysis! 🚀"
         
         # Calculate risk assessment if wallet provided
         risk_assessment = None

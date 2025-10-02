@@ -63,7 +63,14 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   }, [initialQuestion, messages.length]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll if user is near bottom to avoid interrupting reading
+    if (messagesEndRef.current) {
+      const container = messagesEndRef.current.parentElement;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+      if (isNearBottom) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
   };
 
   const initializeConversation = () => {

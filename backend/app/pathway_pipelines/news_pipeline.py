@@ -231,7 +231,8 @@ class NewsPathwayPipeline:
                     content = article.get('content', '')
                     link = article.get('link', '')
                     pub_date = article.get('pubDate', '')
-                    source = article.get('source_id', '')
+                    source_id = article.get('source_id', '')
+                    source_name = article.get('source_name', source_id) or 'Unknown Source'
                     
                     # Combine content
                     full_content = f"{title} {description} {content}".strip()
@@ -243,7 +244,7 @@ class NewsPathwayPipeline:
                     content_text = f"Regulatory News: {full_content}"
                     doc = {
                         'id': article_id,
-                        'source': 'NEWS_API',
+                        'source': source_name,
                         'content': content_text,
                         'text': content_text,  # For compatibility
                         'timestamp': datetime.now().isoformat(),
@@ -253,12 +254,12 @@ class NewsPathwayPipeline:
                             'title': title,
                             'description': description,
                             'published': pub_date,
-                            'news_source': source,
+                            'news_source': source_name,
+                            'source_id': source_id,
                             'query': query,
                             'category': 'regulatory_news',
                             'risk_level': risk_level,
-                            'sentiment': sentiment,
-                            'source': 'NEWS_API'
+                            'sentiment': sentiment
                         }
                     }
                     all_documents.append(doc)

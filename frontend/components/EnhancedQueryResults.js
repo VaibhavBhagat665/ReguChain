@@ -40,21 +40,7 @@ export default function EnhancedQueryResults({ result, loading }) {
 
   return (
     <div className="space-y-6">
-      {/* Main Response */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-            <FileText className="w-5 h-5 text-white" />
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">AI Analysis</h3>
-        </div>
-        
-        <div className="prose dark:prose-invert max-w-none">
-          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-            {result.answer}
-          </p>
-        </div>
-      </div>
+      {/* AI Analysis box removed as requested */}
 
       {/* Risk Assessment */}
       {result.risk_score !== undefined && (
@@ -111,11 +97,6 @@ export default function EnhancedQueryResults({ result, loading }) {
                       <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-800 font-medium">
                         {evidence.source}
                       </span>
-                      {evidence.similarity && (
-                        <span className="text-xs text-gray-500">
-                          {Math.round(evidence.similarity * 100)}% match
-                        </span>
-                      )}
                     </div>
                     
                     <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
