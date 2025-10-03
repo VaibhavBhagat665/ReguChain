@@ -5,7 +5,7 @@ import { Shield, Zap, BarChart3, Brain, FileText, Search, Eye, Bot, Sparkles } f
 import WalletConnect from '../components/WalletConnect';
 import AIAgentChat from '../components/AIAgentChat';
 import NewsFeed from '../components/NewsFeed';
-import WalletRealtimePanel from '../components/WalletRealtimePanel';
+// import WalletRealtimePanel from '../components/WalletRealtimePanel';
 import LiveFeed from '../components/LiveFeed';
 import AlertsPanel from '../components/AlertsPanel';
 
@@ -147,7 +147,7 @@ export default function Home() {
               <div className="space-y-6">
                 <LiveFeed />
                 <AlertsPanel />
-                <WalletRealtimePanel walletAddress={connectedAddress} />
+                {/* <WalletRealtimePanel walletAddress={connectedAddress} /> */}
               </div>
             </div>
           </div>
