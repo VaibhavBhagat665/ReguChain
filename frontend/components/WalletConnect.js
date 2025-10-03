@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Wallet, Link2, AlertCircle, CheckCircle, Copy, Shield, Activity, ExternalLink } from 'lucide-react';
+import { Wallet, Link2, AlertCircle, CheckCircle, Copy, Shield, ExternalLink, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ethers } from 'ethers';
+import { analyzeWallet } from '../lib/api';
 
 export default function WalletConnect({ onAddressSelect }) {
   const [address, setAddress] = useState('');
@@ -13,6 +14,9 @@ export default function WalletConnect({ onAddressSelect }) {
   const [chainId, setChainId] = useState(null);
   const [ensName, setEnsName] = useState(null);
   const [walletType, setWalletType] = useState('');
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Check if wallet is already connected
   useEffect(() => {
@@ -171,9 +175,25 @@ export default function WalletConnect({ onAddressSelect }) {
     return chains[chainId] || `Chain ID: ${chainId}`;
   };
 
-  const addToWatchlist = () => {
-    // This would integrate with the AI agent to add the wallet to monitoring
-    onAddressSelect(address, { action: 'monitor' });
+  const performWalletAnalysis = async () => {
+    if (!address) return;
+    
+    setIsAnalyzing(true);
+    setError('');
+    
+    try {
+      const result = await analyzeWallet(address);
+      setAnalysisResult(result);
+      setShowAnalysis(true);
+      
+      // Also trigger the parent component's analyze action
+      onAddressSelect(address, { action: 'analyze', result });
+    } catch (err) {
+      console.error('Wallet analysis error:', err);
+      setError('Failed to analyze wallet. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const copyAddress = () => {
@@ -184,6 +204,12 @@ export default function WalletConnect({ onAddressSelect }) {
 
   const formatAddress = (addr) => {
     return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+  };
+
+  const getAnalysisStatus = (riskScore) => {
+    if (riskScore <= 30) return { status: 'SAFE', color: 'text-green-600', bgColor: 'bg-green-50', icon: Shield };
+    if (riskScore <= 70) return { status: 'RISKY', color: 'text-yellow-600', bgColor: 'bg-yellow-50', icon: TrendingUp };
+    return { status: 'UNSAFE', color: 'text-red-600', bgColor: 'bg-red-50', icon: TrendingDown };
   };
 
   return (
@@ -289,21 +315,87 @@ export default function WalletConnect({ onAddressSelect }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-3">
             <button
-              onClick={() => onAddressSelect(address)}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2 px-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 flex items-center justify-center gap-2 text-sm"
+              onClick={performWalletAnalysis}
+              disabled={isAnalyzing}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 text-sm font-medium"
             >
-              <Shield className="w-4 h-4" />
-              Analyze
+              {isAnalyzing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Shield className="w-4 h-4" />
+                  Analyze Wallet
+                </>
+              )}
             </button>
-            <button
-              onClick={addToWatchlist}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2 px-3 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 flex items-center justify-center gap-2 text-sm"
-            >
-              <Activity className="w-4 h-4" />
-              Monitor
-            </button>
+            
+            {/* Analysis Results */}
+            {showAnalysis && analysisResult && (
+              <div className="mt-4 p-4 border border-blue-200 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 dark:border-gray-600 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    🔍 Wallet Analysis Report
+                  </h4>
+                  <button
+                    onClick={() => setShowAnalysis(false)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                {(() => {
+                  const analysis = getAnalysisStatus(analysisResult.risk_score);
+                  const StatusIcon = analysis.icon;
+                  return (
+                    <div className="space-y-3">
+                      <div className={`flex items-center gap-2 p-3 rounded-lg ${analysis.bgColor}`}>
+                        <StatusIcon className={`w-5 h-5 ${analysis.color}`} />
+                        <div>
+                          <div className={`text-sm font-bold ${analysis.color}`}>{analysis.status}</div>
+                          <div className="text-xs text-gray-600">Risk Score: {analysisResult.risk_score}/100</div>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2 text-xs">
+                        <div className="p-2 bg-white dark:bg-gray-700 rounded border">
+                          <span className="font-semibold text-gray-700 dark:text-gray-300">Status:</span>
+                          <span className="ml-2 text-gray-900 dark:text-white">{analysisResult.compliance_status}</span>
+                        </div>
+                        <div className="p-2 bg-white dark:bg-gray-700 rounded border">
+                          <span className="font-semibold text-gray-700 dark:text-gray-300">Transactions:</span>
+                          <span className="ml-2 text-gray-900 dark:text-white">{analysisResult.total_transactions}</span>
+                        </div>
+                        {analysisResult.risk_factors && analysisResult.risk_factors.length > 0 && (
+                          <div className="p-2 bg-white dark:bg-gray-700 rounded border">
+                            <div className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Risk Factors:</div>
+                            <ul className="space-y-1">
+                              {analysisResult.risk_factors.slice(0, 3).map((factor, idx) => (
+                                <li key={idx} className="text-xs text-gray-900 dark:text-white flex items-start gap-1">
+                                  <span className="text-red-500 mt-0.5">•</span>
+                                  <span>{factor}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="bg-gray-900 dark:bg-black p-4 rounded-lg border border-gray-600 shadow-inner">
+                        <div className="text-xs text-green-400 font-mono leading-relaxed whitespace-pre-line">
+                          {analysisResult.analysis_summary}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
           
           <div className="text-center">

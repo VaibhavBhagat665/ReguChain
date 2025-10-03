@@ -19,6 +19,7 @@ from .risk import risk_engine
 from .pathway_fallback import pathway_fallback_manager
 from .openrouter_llm import llm_client
 from .openrouter_embeddings import embeddings_client
+from .blockchain_service import blockchain_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -256,90 +257,155 @@ GENERAL QUERIES:
 
 @app.post("/api/wallet/analyze", response_model=WalletAnalysisResponse)
 async def analyze_wallet(request: WalletAnalysisRequest):
-    """Comprehensive wallet analysis using Pathway system"""
+    """Comprehensive wallet analysis using real Etherscan data and Pathway system"""
     try:
+        logger.info(f"Starting real wallet analysis for {request.address}")
+        
         # Add wallet to monitoring
         pathway_fallback_manager.add_target_wallet(request.address)
         
-        # Search for wallet-related documents
-        wallet_query = f"wallet address {request.address} sanctions compliance"
+        # Get real blockchain data from Etherscan
+        wallet_info = await blockchain_service.get_wallet_info(request.address)
+        real_transactions = await blockchain_service.get_transactions(request.address, limit=20)
+        
+        logger.info(f"Retrieved {len(real_transactions)} real transactions for {request.address}")
+        
+        # Search for wallet-related documents in Pathway pipeline
+        wallet_query = f"wallet address {request.address} sanctions compliance OFAC"
         relevant_docs = await vector_store.search(wallet_query, k=15)
         
-        # Calculate risk score based on findings
-        risk_score = 20  # Base risk
-        risk_reasons = []
+        # Initialize risk assessment with blockchain analysis
+        blockchain_risk = await blockchain_service.analyze_wallet_risk(request.address, real_transactions)
+        risk_score = blockchain_risk["risk_score"]
+        risk_reasons = blockchain_risk["risk_factors"].copy()
         
-        # Check for sanctions matches
+        logger.info(f"Blockchain risk analysis: {risk_score}/100, factors: {risk_reasons}")
+        
+        # Check for sanctions matches in Pathway data
         sanctions_found = False
+        regulatory_matches = []
+        
         for doc_tuple in relevant_docs:
             if isinstance(doc_tuple, tuple):
                 doc, similarity = doc_tuple
             else:
                 doc = doc_tuple
+                similarity = 1.0
                 
             content = doc.get('content', '').lower()
+            source = doc.get('source', '')
+            
+            # Check for direct address matches
             if request.address.lower() in content:
                 if 'ofac' in content or 'sanction' in content:
-                    risk_score += 40
-                    risk_reasons.append("Found in OFAC sanctions data")
+                    risk_score = min(risk_score + 50, 100)  # Major risk increase
+                    risk_reasons.append(f"CRITICAL: Found in OFAC sanctions data (Source: {source})")
                     sanctions_found = True
+                    regulatory_matches.append({
+                        "type": "sanctions",
+                        "source": source,
+                        "content": content[:200] + "..."
+                    })
                 elif 'enforcement' in content or 'violation' in content:
-                    risk_score += 25
-                    risk_reasons.append("Mentioned in regulatory enforcement")
+                    risk_score = min(risk_score + 30, 100)
+                    risk_reasons.append(f"WARNING: Mentioned in regulatory enforcement (Source: {source})")
+                    regulatory_matches.append({
+                        "type": "enforcement",
+                        "source": source,
+                        "content": content[:200] + "..."
+                    })
+            
+            # Check for pattern matches (similar addresses, related entities)
+            elif similarity > 0.8 and ('sanction' in content or 'ofac' in content):
+                risk_score = min(risk_score + 15, 100)
+                risk_reasons.append(f"Associated with sanctioned entities (Similarity: {similarity:.2f})")
         
-        # Mock some transaction data for demo
-        transactions = [
-            TransactionData(
-                hash=f"0x{i:064x}",
-                from_address=request.address if i % 2 == 0 else f"0x{'1' * 40}",
-                to_address=f"0x{'2' * 40}" if i % 2 == 0 else request.address,
-                value=str(float(100 + i * 50)),
-                timestamp=datetime.utcnow().isoformat(),
+        logger.info(f"Regulatory analysis complete. Sanctions found: {sanctions_found}, Final risk: {risk_score}")
+        
+        # Convert blockchain transactions to API format
+        transactions = []
+        for tx in real_transactions:
+            transactions.append(TransactionData(
+                hash=tx.hash,
+                from_address=tx.from_address,
+                to_address=tx.to_address,
+                value=tx.value,
+                timestamp=tx.timestamp,
+                block_number=tx.block_number,
                 risk_score=risk_score if sanctions_found else None
-            )
-            for i in range(5)  # Mock 5 transactions
-        ]
+            ))
         
-        # Determine compliance status
-        if risk_score >= 70:
-            compliance_status = "HIGH RISK - Immediate Review Required"
-        elif risk_score >= 40:
-            compliance_status = "MEDIUM RISK - Enhanced Monitoring"
+        # Determine compliance status based on real analysis
+        if sanctions_found or risk_score >= 80:
+            compliance_status = "CRITICAL RISK - Immediate Action Required"
+        elif risk_score >= 60:
+            compliance_status = "HIGH RISK - Enhanced Due Diligence"
+        elif risk_score >= 30:
+            compliance_status = "MEDIUM RISK - Increased Monitoring"
         else:
-            compliance_status = "LOW RISK - Standard Monitoring"
+            compliance_status = "LOW RISK - Standard Compliance"
         
-        # Get recommendations
+        # Generate real-data recommendations
         recommendations = []
         if sanctions_found:
             recommendations.extend([
-                "Immediately freeze all transactions",
-                "Report to compliance team",
-                "Conduct enhanced due diligence"
+                "🚨 IMMEDIATE: Freeze all wallet transactions",
+                "📞 URGENT: Report to compliance officer within 1 hour",
+                "📋 REQUIRED: File Suspicious Activity Report (SAR)",
+                "🔍 INVESTIGATE: Conduct enhanced due diligence on all counterparties"
             ])
-        elif risk_score >= 40:
+        elif risk_score >= 60:
             recommendations.extend([
-                "Enhanced monitoring required",
-                "Review transaction patterns",
-                "Verify source of funds"
+                "⚠️ Enhanced monitoring and transaction review required",
+                "🔍 Investigate source and destination of large transactions",
+                "📊 Review transaction patterns for suspicious activity",
+                "📞 Consider reporting to compliance team"
+            ])
+        elif risk_score >= 30:
+            recommendations.extend([
+                "📈 Implement enhanced monitoring procedures",
+                "🔄 Regular review of transaction patterns",
+                "✅ Verify customer due diligence documentation"
             ])
         else:
             recommendations.extend([
-                "Continue standard monitoring",
-                "Regular compliance checks"
+                "✅ Continue standard AML monitoring",
+                "📅 Schedule regular compliance reviews",
+                "🔄 Monitor for changes in transaction patterns"
             ])
         
-        # Generate analysis summary
-        analysis_summary = f"""Wallet {request.address} analyzed using real-time regulatory data. 
-Risk score: {risk_score}/100. 
-Sanctions check: {'MATCH FOUND' if sanctions_found else 'No matches'}. 
-Compliance status: {compliance_status}."""
+        # Generate comprehensive analysis summary
+        analysis_summary = f"""🔍 REAL-TIME ANALYSIS REPORT
+
+📍 Wallet Address:
+   {request.address}
+
+💰 Balance: {wallet_info.balance} ETH
+📊 Total Transactions: {wallet_info.transaction_count}
+⚠️  Risk Score: {risk_score}/100
+
+🛡️  REGULATORY SCREENING:
+   {'🚨 SANCTIONS MATCH FOUND' if sanctions_found else '✅ No sanctions matches'}
+   📋 Sources: OFAC, SEC, CFTC via Pathway pipeline
+
+📈 BLOCKCHAIN ANALYSIS:
+   🔗 Recent Transactions: {len(real_transactions)}
+   🏷️  Risk Factors: {len(risk_reasons)}
+
+📊 COMPLIANCE STATUS:
+   {compliance_status}
+
+⏰ Completed: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC
+📡 Sources: Etherscan API + Pathway Pipeline"""
+        
+        logger.info(f"Analysis complete for {request.address}: Risk={risk_score}, Status={compliance_status}")
         
         return WalletAnalysisResponse(
             address=request.address,
             risk_score=risk_score,
             compliance_status=compliance_status,
-            total_transactions=len(transactions),
-            recent_transactions=transactions,
+            total_transactions=wallet_info.transaction_count,
+            recent_transactions=transactions[:10],  # Limit to 10 most recent
             risk_factors=risk_reasons,
             recommendations=recommendations,
             analysis_summary=analysis_summary

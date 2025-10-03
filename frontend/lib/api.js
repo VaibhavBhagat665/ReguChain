@@ -352,3 +352,14 @@ export const uploadPdf = async (file) => {
     throw e;
   }
 };
+
+// Create demo alert for testing
+export const createDemoAlert = async () => {
+  try {
+    const response = await api.post('/api/demo/alert');
+    return response.data;
+  } catch (error) {
+    console.error('Create demo alert error:', error);
+    throw error;
+  }
+};
