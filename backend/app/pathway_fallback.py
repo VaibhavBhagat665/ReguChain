@@ -77,94 +77,39 @@ class PathwayFallbackManager:
         try:
             logger.info("🔍 Fetching OFAC data...")
             
-            # First add known sanctioned crypto addresses for immediate demo
-            known_sanctioned = [
-                {
-                    "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb4",
-                    "name": "Tornado Cash Router",
-                    "program": "CYBER-EO13694"
-                },
-                {
-                    "address": "0x12D66f87A04A9E220743712cE6d9bB1B5616B8Fc", 
-                    "name": "Tornado Cash Pool 1",
-                    "program": "CYBER-EO13694"
-                },
-                {
-                    "address": "0x47CE0C6eD5B0Ce3d3A51fdb1C52DC66a7c3c2936",
-                    "name": "Tornado Cash Pool 2", 
-                    "program": "CYBER-EO13694"
-                },
-                {
-                    "address": "0x910Cbd523D972eb0a6f4cAe4618aD62622b39DbF",
-                    "name": "Tornado Cash Pool 3",
-                    "program": "CYBER-EO13694"
-                }
-            ]
+            # Fetch SDN data
+            response = requests.get(OFAC_SDN_URL, timeout=30)
+            response.raise_for_status()
             
+            csv_reader = csv.DictReader(response.text.splitlines())
             documents = []
             
-            # Add known sanctioned addresses
-            for item in known_sanctioned:
-                doc_id = f"ofac_crypto_{item['address']}"
-                if doc_id not in self.seen_items:
-                    self.seen_items.add(doc_id)
-                    
-                    doc = {
-                        'id': doc_id,
-                        'source': 'OFAC_CRYPTO_SANCTIONS',
-                        'text': f"OFAC Sanctioned Cryptocurrency Address: {item['address']} - {item['name']} - Program: {item['program']}",
-                        'timestamp': datetime.now().isoformat(),
-                        'link': 'https://ofac.treasury.gov/sanctions-list-service',
-                        'type': 'crypto_sanction',
-                        'metadata': {
-                            'wallet_address': item['address'],
-                            'entity_name': item['name'],
-                            'sanctions_program': item['program'],
-                            'risk_level': 'critical'
-                        }
-                    }
-                    documents.append(doc)
-            
-            # Try to fetch real OFAC SDN data
-            try:
-                response = requests.get(OFAC_SDN_URL, timeout=30)
-                response.raise_for_status()
+            for row in csv_reader:
+                doc_id = f"ofac_sdn_{row.get('ent_num', '')}"
+                if doc_id in self.seen_items:
+                    continue
                 
-                csv_reader = csv.DictReader(response.text.splitlines())
+                self.seen_items.add(doc_id)
                 
-                for i, row in enumerate(csv_reader):
-                    if i >= 50:  # Limit to first 50 entries to avoid overwhelming
-                        break
-                        
-                    doc_id = f"ofac_sdn_{row.get('ent_num', '')}"
-                    if doc_id in self.seen_items:
-                        continue
-                    
-                    self.seen_items.add(doc_id)
-                    
-                    doc = {
-                        'id': doc_id,
-                        'source': 'OFAC_SDN',
-                        'text': f"OFAC SDN Entry: {row.get('name', '')} - {row.get('title', '')} - {row.get('remarks', '')}",
-                        'timestamp': datetime.now().isoformat(),
-                        'link': OFAC_SDN_URL,
-                        'type': 'sanction',
-                        'metadata': {
-                            'entity_number': row.get('ent_num', ''),
-                            'name': row.get('name', ''),
-                            'title': row.get('title', ''),
-                            'remarks': row.get('remarks', ''),
-                            'risk_level': 'high'
-                        }
+                doc = {
+                    'id': doc_id,
+                    'source': 'OFAC_SDN',
+                    'text': f"OFAC SDN Entry: {row.get('name', '')} - {row.get('title', '')}",
+                    'timestamp': datetime.now().isoformat(),
+                    'link': OFAC_SDN_URL,
+                    'type': 'sanction',
+                    'metadata': {
+                        'entity_number': row.get('ent_num', ''),
+                        'name': row.get('name', ''),
+                        'title': row.get('title', ''),
+                        'risk_level': 'high'
                     }
-                    documents.append(doc)
-                    
-            except Exception as sdn_error:
-                logger.warning(f"Could not fetch SDN data: {sdn_error}, using crypto sanctions only")
+                }
+                documents.append(doc)
             
             # Process documents
             await self._process_documents(documents, 'OFAC')
-            logger.info(f"✅ Processed {len(documents)} OFAC documents (including {len(known_sanctioned)} crypto addresses)")
+            logger.info(f"✅ Processed {len(documents)} OFAC documents")
             
         except Exception as e:
             logger.error(f"❌ Error ingesting OFAC data: {e}")
@@ -228,9 +173,10 @@ class PathwayFallbackManager:
         if not NEWSAPI_KEY:
             return
         
-        # Reduce queries to avoid rate limits
         queries = [
-            "cryptocurrency sanctions"  # Single query to avoid 429 errors
+            "sanctions cryptocurrency",
+            "OFAC blockchain",
+            "crypto fraud enforcement"
         ]
         
         all_documents = []
@@ -378,21 +324,11 @@ class PathwayFallbackManager:
                 # Generate embedding and store in vector store
                 embedding = await embeddings_client.embed_text(doc['text'])
                 if embedding:
-                    # Prepare full metadata including source and link
-                    full_metadata = doc['metadata'].copy()
-                    full_metadata.update({
-                        'source': doc['source'],
-                        'link': doc.get('link', ''),
-                        'timestamp': doc.get('timestamp', ''),
-                        'type': doc.get('type', 'document'),
-                        'id': doc['id']
-                    })
-                    
                     vector_store.add_document(
                         doc_id=doc['id'],
                         content=doc['text'],
                         embedding=embedding,
-                        metadata=full_metadata
+                        metadata=doc['metadata']
                     )
                 
                 # Generate alerts
