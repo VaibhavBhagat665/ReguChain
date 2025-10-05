@@ -247,6 +247,10 @@ class VectorStore:
                 "documents": len(self.documents),
                 "backend": "numpy"
             }
+    
+    def get_all_documents(self) -> List[Dict]:
+        """Get all documents in the vector store"""
+        return self.documents.copy()
 
 # Global vector store instance
 vector_store = VectorStore()
