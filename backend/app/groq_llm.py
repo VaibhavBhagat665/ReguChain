@@ -16,8 +16,8 @@ class GroqLLMClient:
     
     def __init__(self):
         self.api_key = GROQ_API_KEY
-        # Default to Llama 3 8B as requested (approx to 7b free)
-        self.model = "llama3-8b-8192"
+        # Default to Llama 3.1 8B Instant (replaces deprecated llama3-8b-8192)
+        self.model = "llama-3.1-8b-instant"
         if LLM_MODEL and "llama" in LLM_MODEL.lower():
              self.model = LLM_MODEL
         

@@ -13,9 +13,10 @@ const { chains, publicClient, webSocketPublicClient } = configureChains(
 );
 
 // Get default wallets (MetaMask, Coinbase, WalletConnect, etc.)
+// NOTE: Get a free project ID from https://cloud.walletconnect.com
 const { connectors } = getDefaultWallets({
     appName: 'ReguChain',
-    projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'demo-project-id',
+    projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
     chains
 });
 
