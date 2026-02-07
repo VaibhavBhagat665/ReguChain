@@ -3,6 +3,7 @@ Pathway integration for real-time data streaming and processing
 """
 import logging
 import asyncio
+import os
 from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime, timedelta
 import json
@@ -70,6 +71,13 @@ class PathwayService:
         self.persistence_backend = PATHWAY_PERSISTENCE_BACKEND
         self.persistence_path = PATHWAY_PERSISTENCE_PATH
         self.monitoring_level = PATHWAY_MONITORING_LEVEL
+        
+        # Define paths
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.data_dir = os.path.join(base_dir, 'data')
+        
+        # Ensure data directories exist
+        os.makedirs(self.data_dir, exist_ok=True)
         
         self.data_streams = {}
         self.indexes = {}
@@ -139,6 +147,9 @@ class PathwayService:
                 self.data_streams["compliance_dashboard"] = compliance_data
                 self.data_streams["alerts"] = alerts
                 
+                # Add OFAC stream
+                self.create_ofac_stream()
+
                 logger.info("Compliance monitoring pipeline created successfully")
                 return {
                     "status": "active",
@@ -368,6 +379,80 @@ class PathwayService:
         except Exception as e:
             logger.error(f"Error creating regulatory stream: {e}")
             return None
+
+    def create_ofac_stream(self) -> Optional[Any]:
+        """Create real-time OFAC sanctions list stream"""
+        if not pathway_available:
+            logger.error("Pathway not available - OFAC stream disabled")
+            return None
+        
+        try:
+            class OFACSchema(pw.Schema):
+                ent_num: int
+                SDN_Name: str
+                SDN_Type: str
+                Program: str
+                Title: str
+                Call_Sign: str
+                Vess_type: str
+                Tonnage: str
+                GRT: str
+                Vess_flag: str
+                Vess_owner: str
+                Remarks: str
+
+            # Read OFAC CSV (no header in file, so schema order defines columns)
+            # Use data_dir instead of persistence_path
+            ofac_table = pw.io.csv.read(
+                os.path.join(self.data_dir, "ofac_sdn.csv"),
+                schema=OFACSchema,
+                mode="streaming" if self.streaming_mode == "realtime" else "static",
+                csv_settings=pw.io.csv.CsvSettings(header=False)
+            )
+            
+            # Simple processing or indexing could happen here
+            # For now, just expose the raw table
+            self.data_streams["ofac"] = ofac_table
+            
+            logger.info("OFAC sanctions stream created successfully")
+            return ofac_table
+
+        except Exception as e:
+            # logger.error(f"Error creating OFAC stream: {e}") 
+            # Fallback for now if file missing or other error, suppress noise
+            logger.warning(f"Could not create OFAC stream: {e}")
+            return None
+    
+    def search_sanctions(self, name_query: str) -> List[Dict]:
+        """Search for entities in the OFAC sanctions list"""
+        # Allow fallback even if Pathway is not available
+            
+        try:
+            # Direct Pandas fallback for synchronous search
+            import pandas as pd
+            import os
+            
+            csv_path = os.path.join(self.data_dir, "ofac_sdn.csv")
+            if not os.path.exists(csv_path):
+                logger.warning(f"OFAC CSV not found at {csv_path}")
+                return []
+
+            # Read CSV with defined headers (file has no header row)
+            df = pd.read_csv(csv_path, 
+                             names=["ent_num", "SDN_Name", "SDN_Type", "Program", "Title", "Call_Sign", 
+                                    "Vess_type", "Tonnage", "GRT", "Vess_flag", "Vess_owner", "Remarks"],
+                             header=None,
+                             dtype=str) # Read all as string to avoid type errors
+            
+            # Simple fuzzy search
+            results = df[df['SDN_Name'].str.contains(name_query, case=False, na=False)].head(5)
+            # Handle NaN values for JSON serialization
+            results = results.fillna("")
+            return results.to_dict('records')
+
+        except Exception as e:
+            logger.error(f"Error searching sanctions: {e}")
+            return []
     
     def _calculate_relevance(self, title: str, description: str) -> float:
         """Enhanced relevance calculation with weighted keywords"""

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Dict, List
+import re
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -16,7 +17,7 @@ from .database import database
 from .vector_store import vector_store
 from .risk import risk_engine
 from .pathway_fallback import pathway_fallback_manager
-from .openrouter_llm import llm_client
+from .groq_llm import llm_client
 from .openrouter_embeddings import embeddings_client
 from .blockchain_service import blockchain_service
 
@@ -25,6 +26,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # LLM initialization is handled in langchain_agent via Groq.
+
+def extract_potential_entities(text: str) -> List[str]:
+    """Extract potential entity names (capitalized phrases) from text"""
+    pattern = r'\b[A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*)*\b'
+    matches = re.findall(pattern, text)
+    filtered = [m for m in matches if len(m) > 2]
+    return filtered
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,7 +45,7 @@ async def lifespan(app: FastAPI):
         await pathway_fallback_manager.start_all_pipelines()
         logger.info("✅ Pathway pipelines started successfully")
         logger.info("📊 Real-time ingestion: OFAC, RSS, News, Blockchain")
-        logger.info("🤖 AI Agent: OpenRouter + Mistral-7B + RAG")
+        logger.info("🤖 AI Agent: Groq + Llama 3 + RAG")
         logger.info("🔍 Vector Search: FAISS + OpenRouter Embeddings")
         logger.info("🚨 Alerts: Real-time compliance monitoring")
     except Exception as e:
@@ -69,6 +77,12 @@ app.add_middleware(
 
 
 
+@app.get("/api/compliance/search")
+async def search_compliance(query: str):
+    """Search for entities in the OFAC sanctions list"""
+    results = pathway_service.search_sanctions(query)
+    return {"results": results}
+
 @app.post("/api/agent/chat", response_model=AgentResponse)
 async def chat_with_agent(request: AgentRequest):
     """Chat with the Pathway-powered AI agent"""
@@ -79,6 +93,46 @@ async def chat_with_agent(request: AgentRequest):
         
         # Search for relevant documents
         relevant_docs = await vector_store.search(request.message, k=10)
+        
+        # Check for sanctions matches (Automatic RAG)
+        sanctions_matches = []
+        try:
+            # 1. Search for the whole query if it's short and looks like a name
+            if len(request.message) < 50 and not request.message.lower().startswith(("hi", "hello", "hey")):
+                sanctions_matches.extend(pathway_service.search_sanctions(request.message))
+            
+            # 2. Extract potential entities and search
+            potential_entities = extract_potential_entities(request.message)
+            for entity in potential_entities:
+                if entity.lower() not in ["hi", "hello", "hey", "check", "verify", "is", "are", "what", "where", "how"]:
+                    matches = pathway_service.search_sanctions(entity)
+                    sanctions_matches.extend(matches)
+            
+            # Deduplicate by ent_num or name
+            seen_ids = set()
+            unique_matches = []
+            for m in sanctions_matches:
+                uid = m.get('ent_num', m.get('SDN_Name'))
+                if uid not in seen_ids:
+                    seen_ids.add(uid)
+                    unique_matches.append(m)
+            sanctions_matches = unique_matches
+            
+            # Add to relevant docs if found
+            for match in sanctions_matches:
+                # Format as a document
+                doc_content = f"SANCTIONS_ALERT: {match.get('SDN_Name')} (Type: {match.get('SDN_Type')}) is on OFAC List. Program: {match.get('Program')}. Remarks: {match.get('Remarks')}"
+                relevant_docs.append({
+                    'content': doc_content,
+                    'source': 'OFAC Sanctions List',
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'link': 'https://sanctionssearch.ofac.treas.gov/',
+                    'metadata': {'title': f"Sanction: {match.get('SDN_Name')}", 'type': 'alert', 'risk_level': 'critical'}
+                })
+                
+        except Exception as e:
+            logger.error(f"Error in automatic sanctions check: {e}")
+
         
         # Prepare context for LLM
         context_docs = []
@@ -241,7 +295,7 @@ GENERAL QUERIES:
             "blockchain_data": None,
             "suggested_actions": [],
             "confidence": 0.85,
-            "capabilities_used": ["pathway_rag", "openrouter_llm", "vector_search"],
+            "capabilities_used": ["pathway_rag", "groq_llm", "vector_search"],
             "follow_up_questions": [],
             "context_documents": context_docs  # Include context documents for frontend
         }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Loader, MessageSquare, Brain, Shield, Activity } from 'lucide-react';
+import { Send, Bot, User, Loader, MessageSquare, Brain, Shield, Activity, Sparkles, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { queryAPI } from '../lib/api';
 import EnhancedQueryResults from './EnhancedQueryResults';
@@ -32,9 +32,9 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
 
     return () => {
       mountedRef.current = false;
-      try { controller.abort(); } catch (e) {}
+      try { controller.abort(); } catch (e) { }
       if (sendControllerRef.current) {
-        try { sendControllerRef.current.abort(); } catch (e) {}
+        try { sendControllerRef.current.abort(); } catch (e) { }
       }
     };
   }, []);
@@ -67,7 +67,7 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
     if (messagesEndRef.current) {
       const container = messagesEndRef.current.parentElement;
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
-      if (isNearBottom) {
+      if (isNearBottom || messages.length <= 2) {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
       }
     }
@@ -76,7 +76,7 @@ export default function AIAgentChat({ walletAddress, onAnalysisResult, initialQu
   const initializeConversation = () => {
     const newConversationId = uuidv4();
     setConversationId(newConversationId);
-    
+
     // Add welcome message
     const welcomeMessage = {
       id: uuidv4(),
@@ -92,7 +92,7 @@ ${walletAddress ? `I see you have wallet ${walletAddress.substring(0, 6)}...${wa
       timestamp: new Date().toISOString(),
       metadata: {}
     };
-    
+
     setMessages([welcomeMessage]);
   };
 
@@ -114,7 +114,7 @@ What would you like to explore first?`,
       timestamp: new Date().toISOString(),
       metadata: { walletAddress }
     };
-    
+
     setMessages(prev => [...prev, welcomeMessage]);
   };
 
@@ -154,7 +154,7 @@ What would you like to explore first?`,
 
     // Abort previous chat request if any
     if (sendControllerRef.current) {
-      try { sendControllerRef.current.abort(); } catch (e) {}
+      try { sendControllerRef.current.abort(); } catch (e) { }
     }
     const controller = new AbortController();
     sendControllerRef.current = controller;
@@ -163,10 +163,10 @@ What would you like to explore first?`,
       // Use the enhanced query API
       const agentResponse = await queryAPI(trimmedMessage, walletAddress, conversationId);
       if (!mountedRef.current) return;
-      
+
       // Store the enhanced query result
       setLastQueryResult(agentResponse);
-      
+
       const assistantMessage = {
         id: uuidv4(),
         role: 'assistant',
@@ -209,7 +209,7 @@ What would you like to explore first?`,
         const assistantMessage = {
           id: uuidv4(),
           role: 'assistant',
-          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n✅ **API Status Check:**\n- Backend: http://localhost:8000/api/health\n- OpenRouter API: Check your .env file for OPENROUTER_API_KEY\n- NewsData.io API: Check your .env file for NEWSAPI_KEY\n\n**Error:** ${error.message || 'Connection failed'}\n\n**Troubleshooting:**\n1. Ensure backend is running: \`python -m uvicorn app.main:app --reload\`\n2. Check your .env file has valid API keys\n3. Test connection: \`python test_api_connection.py\``,
+          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n✅ **API Status Check:**\n- Backend: http://localhost:8000/api/health\n- Groq API: Check your .env file for GROQ_API_KEY\n- NewsData.io API: Check your .env file for NEWSAPI_KEY\n\n**Error:** ${error.message || 'Connection failed'}\n\n**Troubleshooting:**\n1. Ensure backend is running: \`python -m uvicorn app.main:app --reload\`\n2. Check your .env file has valid API keys\n3. Test connection: \`python scripts/test_groq_connection.py\``,
           timestamp: new Date().toISOString(),
           metadata: {}
         };
@@ -232,199 +232,132 @@ What would you like to explore first?`,
     setInputMessage(query);
     // Auto-send after a brief delay to show the message in input
     setTimeout(() => {
-      sendMessage();
+      sendMessage(query);
     }, 100);
   };
 
   const formatMessage = (content) => {
     // Simple markdown-like formatting
     return content
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br/>');
-  };
-
-  const getCapabilityIcon = (capabilityName) => {
-    const icons = {
-      wallet_analysis: Shield,
-      compliance_check: MessageSquare,
-      risk_assessment: Activity,
-      conversational_ai: Bot,
-      blockchain_insights: Brain,
-      regulatory_updates: MessageSquare
-    };
-    return icons[capabilityName] || MessageSquare;
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="text-blue-600 dark:text-blue-400">$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em class="text-slate-600 dark:text-slate-300">$1</em>')
+      .replace(/\n/g, '<br/>')
+      .replace(/•/g, '<span class="text-blue-500 mr-2">•</span>');
   };
 
   return (
-    <div className="space-y-6">
-      {/* Chat Interface */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg h-96 flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5 text-primary-600" />
-              <h2 className="text-lg font-semibold">ReguChain AI Agent</h2>
-            </div>
-            <div className="flex items-center gap-1">
-              {agentCapabilities.slice(0, 3).map((capability) => {
-                const IconComponent = getCapabilityIcon(capability.name);
-                return (
-                  <div
-                    key={capability.name}
-                    className="p-1 bg-primary-50 dark:bg-primary-900/20 rounded"
-                    title={capability.description}
-                  >
-                    <IconComponent className="w-3 h-3 text-primary-600" />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col h-full bg-white/30 dark:bg-slate-900/40 backdrop-blur-sm rounded-none lg:rounded-b-2xl">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex animate-fade-in ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.role === 'user'
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                {message.role === 'assistant' && (
-                  <Bot className="w-4 h-4 mt-0.5 text-primary-600" />
-                )}
-                {message.role === 'user' && (
-                  <User className="w-4 h-4 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <div
-                    className="text-sm"
-                    dangerouslySetInnerHTML={{ __html: formatMessage(message.content) }}
-                  />
-                  
-                  {/* Show metadata for assistant messages */}
-                  {message.role === 'assistant' && message.metadata.confidence && (
-                    <div className="mt-2 text-xs opacity-70">
-                      Confidence: {Math.round(message.metadata.confidence * 100)}%
-                    </div>
-                  )}
-                  
-                  {/* Show suggested actions */}
-                  {message.metadata.suggested_actions && message.metadata.suggested_actions.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-medium opacity-70">Suggested Actions:</p>
-                      {message.metadata.suggested_actions.slice(0, 2).map((action, index) => (
-                        <button
-                          key={index}
-                          onClick={() => sendQuickQuery(action)}
-                          className="block text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-left w-full transition-colors"
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Show follow-up questions */}
-                  {message.metadata.follow_up_questions && message.metadata.follow_up_questions.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs font-medium opacity-70">Follow-up Questions:</p>
-                      {message.metadata.follow_up_questions.slice(0, 2).map((question, index) => (
-                        <button
-                          key={index}
-                          onClick={() => sendQuickQuery(question)}
-                          className="block text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-left w-full transition-colors"
-                        >
-                          {question}
-                        </button>
-                      ))}
+            <div className={`flex gap-3 max-w-[85%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+
+              {/* Avatar */}
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-md ${message.role === 'user'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-slate-100 dark:border-slate-700'
+                }`}>
+                {message.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+              </div>
+
+              {/* Message Bubble */}
+              <div className={`flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`p-4 rounded-2xl shadow-sm ${message.role === 'user'
+                    ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-tr-none'
+                    : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'
+                  }`}>
+                  {/* Content */}
+                  <div className="text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: formatMessage(message.content) }}></div>
+
+                  {/* Metadata / Actions for Assistant */}
+                  {message.role === 'assistant' && (
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50 flex flex-col gap-3">
+
+                      {/* Confidence & Actions */}
+                      <div className="flex items-center justify-between gap-4">
+                        {message.metadata.confidence && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 dark:bg-slate-900/50 px-2 py-1 rounded-md">
+                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            <span>{Math.round(message.metadata.confidence * 100)}% Confidence</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <button className="p-1 text-slate-400 hover:text-blue-500 transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                          <button className="p-1 text-slate-400 hover:text-emerald-500 transition-colors"><ThumbsUp className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </div>
+
+                      {/* Suggested Actions */}
+                      {message.metadata.suggested_actions && message.metadata.suggested_actions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {message.metadata.suggested_actions.slice(0, 3).map((action, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => sendQuickQuery(action)}
+                              className="text-xs px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors border border-blue-100 dark:border-blue-900/30"
+                            >
+                              {action}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
+                <span className="text-[10px] text-slate-400 mt-1 px-1">{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             </div>
           </div>
         ))}
-        
+
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 flex items-center gap-2">
-              <Bot className="w-4 h-4 text-primary-600" />
-              <Loader className="w-4 h-4 animate-spin" />
-              <span className="text-sm text-gray-600 dark:text-gray-300">AI is thinking...</span>
+          <div className="flex justify-start animate-fade-in">
+            <div className="flex gap-3 max-w-[85%]">
+              <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-slate-100 dark:border-slate-700 flex items-center justify-center shadow-md">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl rounded-tl-none p-4 shadow-sm flex items-center gap-3">
+                <Loader className="w-4 h-4 text-blue-600 animate-spin" />
+                <span className="text-sm text-slate-500 dark:text-slate-400 font-medium">Analyzing regulatory data...</span>
+              </div>
             </div>
           </div>
         )}
-        
         <div ref={messagesEndRef} />
-        </div>
       </div>
 
-      {/* Quick Actions */}
-      {walletAddress && messages.length <= 2 && (
-        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => sendQuickQuery(`Analyze wallet ${walletAddress} for compliance risks`)}
-              className="text-xs bg-primary-100 text-primary-700 px-3 py-1 rounded-full hover:bg-primary-200 transition-colors"
-            >
-              🔍 Analyze Wallet
-            </button>
-            <button
-              onClick={() => sendQuickQuery('What are the latest regulatory updates?')}
-              className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors"
-            >
-              📰 Latest Updates
-            </button>
-            <button
-              onClick={() => sendQuickQuery('How does compliance monitoring work?')}
-              className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full hover:bg-green-200 transition-colors"
-            >
-              ❓ How It Works
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex gap-2">
+      {/* Input Area */}
+      <div className="p-4 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 rounded-b-2xl">
+        <div className="relative flex items-end gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
           <textarea
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask me anything about blockchain compliance..."
-            className="flex-1 resize-none border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white"
-            rows="2"
-            disabled={isLoading}
+            placeholder="Ask about compliance risks, sanctions, or wallet activity..."
+            className="flex-1 max-h-32 min-h-[44px] w-full bg-transparent border-none focus:ring-0 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 resize-none py-2.5 px-3"
+            rows="1"
           />
           <button
             onClick={() => sendMessage()}
-            disabled={(typeof inputMessage === 'string' ? inputMessage.trim() === '' : !inputMessage) || isLoading}
-            className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            disabled={!inputMessage.trim() || isLoading}
+            className={`p-2.5 rounded-lg mb-0.5 transition-all duration-200 ${!inputMessage.trim() || isLoading
+                ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95'
+              }`}
           >
-            {isLoading ? (
-              <Loader className="w-4 h-4 animate-spin" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
+            {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </div>
+        <div className="mt-2 text-center">
+          <p className="text-[10px] text-slate-400">
+            ReguChain AI can make mistakes. Verify important information.
+          </p>
+        </div>
       </div>
-      
-      {/* Enhanced Query Results */}
-      {lastQueryResult && (
-        <EnhancedQueryResults result={lastQueryResult} loading={false} />
-      )}
     </div>
   );
 }
