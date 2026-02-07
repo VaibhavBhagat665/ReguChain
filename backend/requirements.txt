@@ -20,7 +20,8 @@ numpy==1.24.3
 openai>=1.30.0,<2
 langchain==0.0.340
 langchain-community==0.0.1
-groq==0.4.1
+groq>=0.11.0
+httpx>=0.27.0,<0.28
 
 # Data processing
 pandas==2.1.4
