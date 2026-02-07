@@ -25,7 +25,10 @@ class GroqLLMClient:
         if not self.api_key:
             logger.warning("⚠️ Groq API key not configured")
         else:
-            self.client = AsyncGroq(api_key=self.api_key)
+            try:
+                self.client = AsyncGroq(api_key=self.api_key)
+            except Exception as e:
+                logger.error(f"⚠️ Failed to initialize Groq client: {e}")
     
     async def generate_response(
         self, 
