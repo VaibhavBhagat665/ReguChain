@@ -21,18 +21,22 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/data /app/logs
+RUN mkdir -p /app/data /app/logs /app/data/pathway_data
+
+# Make start script executable
+RUN chmod +x /app/start.sh
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
-# Expose port
+# Expose port (Render uses PORT env var)
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+# Health check using the dynamic port
+HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-# Run the Pathway-powered application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run using start script (supports dynamic PORT)
+CMD ["/bin/bash", "/app/start.sh"]
