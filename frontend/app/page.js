@@ -2,20 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { Shield, Zap, Bot, Sparkles, Menu, ChevronRight, Activity, Wallet, AlertTriangle, CheckCircle, TrendingUp, RefreshCw } from 'lucide-react';
-import { useAccount } from 'wagmi';
 import WalletConnect from '../components/WalletConnect';
 import AIAgentChat from '../components/AIAgentChat';
 import LiveFeed from '../components/LiveFeed';
 import AlertsPanel from '../components/AlertsPanel';
 
 export default function Home() {
-  const { address: connectedAddress, isConnected } = useAccount();
+  // Wallet state managed via callback from WalletConnect component
+  const [connectedAddress, setConnectedAddress] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
   const [selectedExample, setSelectedExample] = useState(null);
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [complianceStatus, setComplianceStatus] = useState(null);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+
+  // Handle wallet address changes from WalletConnect component
+  const handleAddressSelect = (address) => {
+    setConnectedAddress(address);
+    setIsConnected(!!address);
+  };
 
   // Fetch real alerts from backend
   const fetchAlerts = async () => {
@@ -165,7 +172,7 @@ export default function Home() {
               <div className="max-w-md mx-auto mb-16 relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
                 <div className="relative">
-                  <WalletConnect onAddressSelect={() => { }} />
+                  <WalletConnect onAddressSelect={handleAddressSelect} />
                 </div>
               </div>
 
@@ -231,7 +238,7 @@ export default function Home() {
                   <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Connect Your Wallet</h2>
                   <p className="text-slate-500 dark:text-slate-400 mb-8">Connect your wallet to access live monitoring features.</p>
                   <div className="max-w-sm mx-auto">
-                    <WalletConnect onAddressSelect={() => { }} />
+                    <WalletConnect onAddressSelect={handleAddressSelect} />
                   </div>
                 </div>
               ) : (
