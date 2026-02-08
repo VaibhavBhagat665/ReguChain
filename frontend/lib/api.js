@@ -41,7 +41,7 @@ export async function queryAPI(message, walletAddress, conversationId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: message,
+        message: message,
         wallet_address: walletAddress || null,
         conversation_id: conversationId || null,
       }),
