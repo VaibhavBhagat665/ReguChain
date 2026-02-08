@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Shield, Zap, Bot, Sparkles, Menu, ChevronRight, Activity, Wallet, AlertTriangle, CheckCircle, TrendingUp, RefreshCw } from 'lucide-react';
+import { API_ENDPOINTS } from '../lib/api';
 import WalletConnect from '../components/WalletConnect';
 import AIAgentChat from '../components/AIAgentChat';
 import LiveFeed from '../components/LiveFeed';
@@ -28,7 +29,7 @@ export default function Home() {
   const fetchAlerts = async () => {
     setIsLoadingAlerts(true);
     try {
-      const res = await fetch('http://localhost:8000/api/alerts?limit=5');
+      const res = await fetch(`${API_ENDPOINTS.alerts}?limit=5`);
       if (res.ok) {
         const data = await res.json();
         setAlerts(data);
@@ -44,7 +45,7 @@ export default function Home() {
   const fetchComplianceStatus = async () => {
     if (!connectedAddress) return;
     try {
-      const res = await fetch(`http://localhost:8000/api/wallet/analyze`, {
+      const res = await fetch(API_ENDPOINTS.walletAnalyze, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: connectedAddress })
