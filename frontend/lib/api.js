@@ -8,4 +8,42 @@ export const API_ENDPOINTS = {
   chat: `${API_BASE_URL}/api/agent/chat`,
   complianceSearch: `${API_BASE_URL}/api/compliance/search`,
   health: `${API_BASE_URL}/api/health`,
+  status: `${API_BASE_URL}/api/status`,
 };
+
+// Helper functions for API calls
+export async function getStatus() {
+  try {
+    const res = await fetch(API_ENDPOINTS.status);
+    if (!res.ok) throw new Error('Failed to fetch status');
+    return await res.json();
+  } catch (error) {
+    console.error('getStatus error:', error);
+    return { status: 'inactive', last_updates: [], index_stats: {} };
+  }
+}
+
+export async function getAlerts(limit = 10) {
+  try {
+    const res = await fetch(`${API_ENDPOINTS.alerts}?limit=${limit}`);
+    if (!res.ok) throw new Error('Failed to fetch alerts');
+    return await res.json();
+  } catch (error) {
+    console.error('getAlerts error:', error);
+    return [];
+  }
+}
+
+export async function queryAPI(endpoint, options = {}) {
+  try {
+    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    if (!res.ok) throw new Error('Request failed');
+    return await res.json();
+  } catch (error) {
+    console.error('queryAPI error:', error);
+    throw error;
+  }
+}

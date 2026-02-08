@@ -209,7 +209,7 @@ What would you like to explore first?`,
         const assistantMessage = {
           id: uuidv4(),
           role: 'assistant',
-          content: `I couldn't reach the AI service. Please ensure the backend API is running and configured.\n\n✅ **API Status Check:**\n- Backend: http://localhost:8000/api/health\n- Groq API: Check your .env file for GROQ_API_KEY\n- NewsData.io API: Check your .env file for NEWSAPI_KEY\n\n**Error:** ${error.message || 'Connection failed'}\n\n**Troubleshooting:**\n1. Ensure backend is running: \`python -m uvicorn app.main:app --reload\`\n2. Check your .env file has valid API keys\n3. Test connection: \`python scripts/test_groq_connection.py\``,
+          content: `Something went wrong. Please try again later.`,
           timestamp: new Date().toISOString(),
           metadata: {}
         };
