@@ -34,11 +34,17 @@ export async function getAlerts(limit = 10) {
   }
 }
 
-export async function queryAPI(endpoint, options = {}) {
+// Chat API function - used by AIAgentChat
+export async function queryAPI(message, walletAddress, conversationId) {
   try {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const res = await fetch(API_ENDPOINTS.chat, {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      ...options,
+      body: JSON.stringify({
+        query: message,
+        wallet_address: walletAddress || null,
+        conversation_id: conversationId || null,
+      }),
     });
     if (!res.ok) throw new Error('Request failed');
     return await res.json();
